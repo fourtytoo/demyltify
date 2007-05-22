@@ -1,11 +1,11 @@
 ;;;  demyltify.lisp --- Milter Protocol library
 
-;;;  Copyright (C) 2004, 2006 by Walter C. Pelissero
+;;;  Copyright (C) 2004, 2006, 2007 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2006-12-11 14:16:17 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-05-22 14:50:21 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -158,30 +158,35 @@
 	   #:event-body
 	   #:event-connect
 	   #:event-define-macro
-	   #:event-end-of-message
-	   #:event-hello
-	   #:event-header
-	   #:event-mail
+	   #:event-data
+	   #:event-disconnect
 	   #:event-end-of-headers
+	   #:event-end-of-message
+	   #:event-header
+	   #:event-hello
+	   #:event-mail
 	   #:event-options
-	   #:event-recipient
 	   #:event-quit
+	   #:event-recipient
+	   #:event-unknown
 	   ;; the milter actions classes
 	   #:milter-action
-	   #:action-add-recipient
-	   #:action-delete-recipient
 	   #:action-accept
-	   #:action-replace-body
-	   #:action-continue
-	   #:action-discard
 	   #:action-add-header
+	   #:action-add-recipient
 	   #:action-change-header
+	   #:action-change-sender
+	   #:action-continue
+	   #:action-delete-recipient
+	   #:action-discard
+	   #:action-options
 	   #:action-progress
 	   #:action-quarantine
 	   #:action-reject
-	   #:action-temporary-failure
+	   #:action-replace-body
 	   #:action-reply-code
-	   #:action-options
+	   #:action-skip
+	   #:action-temporary-failure
 	   ;; the event slot readers
 	   #:event-body-data
 	   #:event-conn-host-name
@@ -200,6 +205,7 @@
 	   #:event-options-protocol
 	   #:event-recipient-address
 	   #:event-recipient-options
+	   #:event-unknown-command
 	   ;; the global variables
 	   #:*log-features*
 	   #:*log-file*
@@ -212,9 +218,11 @@
 (defconstant +max-body-chunk+ 65535
   "Maximum size of a replace-body message to the MTA.")
 
-(defconstant +milter-protocol-version+ 2
-  "Version number of the milter protocol spoken by this
-library.")
+(defconstant +protocol-version+ 6
+  "Protocol version number spoken by this library.")
+
+(defconstant +minimum-protocol-version+ 2
+  "Minimum protocol version accepted by this library.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; CONFIGURABLE OPTIONS
@@ -339,12 +347,17 @@ implementations) are likely to specialise this."))
   ())
 
 (defclass event-abort (mta-event)
-  ())
+  ()
+  (:documentation
+   "The MTA asks to abort any further processing of the current
+message.  More messages may follow."))
 
 (defclass event-body (mta-event)
   ((data :initarg :data
 	 :type (vector (unsigned-byte 8))
-	 :reader event-body-data)))
+	 :reader event-body-data))
+  (:documentation
+   "This constitutes a chunk (possibly all) of a message body."))
 
 (defclass event-connect (mta-event)
   ((host-name :initarg :host-name
@@ -360,6 +373,11 @@ implementations) are likely to specialise this."))
 	    :type string
 	    :reader event-conn-address)))
 
+(defclass event-data (mta-event)
+  ()
+  (:documentation
+   "This marks the beginning of the message body.  See EVENT-BODY."))
+
 (defclass event-define-macro (mta-event)
   ((command :initarg :command
 	    :type character
@@ -369,7 +387,9 @@ implementations) are likely to specialise this."))
      :reader event-macro-definitions)))
 
 (defclass event-end-of-message (mta-event)
-  ())
+  ()
+  (:documentation
+   "This marks the end of the message body."))
 
 (defclass event-hello (mta-event)
   ((greeting :initarg :greeting
@@ -415,14 +435,36 @@ implementations) are likely to specialise this."))
 	    :reader event-recipient-options)))
 
 (defclass event-quit (mta-event)
-  ())
+  ()
+  (:documentation
+   "The MTA wants this milter to stop running.  By default it simply
+closes the socket connection but a program can decide to actually stop
+running."))
+
+(defclass event-disconnect (mta-event)
+  ()
+  (:documentation
+   "Similar to EVENT-QUIT, but the milter program should expect
+further connections."))
+
+(defclass event-unknown (mta-event)
+  ((command :initarg :command
+	    :type string
+	    :reader event-unknown-command))
+  (:documentation
+   "Unknown or invalid SMTP command from client.  The default
+behaviour is to ignore it."))
 
 (defclass milter-action ()
   ())
 
 (defclass action-add-recipient (milter-action)
   ((address :initarg :address
-	    :type string)))
+	    :type string)
+   (parameters :initarg :parameters
+	       :type (or string null)
+	       :initform nil
+	       :documentation "Optional ESMTP parameters.")))
 
 (defclass action-delete-recipient (milter-action)
   ((address :initarg :address
@@ -444,11 +486,26 @@ implementations) are likely to specialise this."))
 (defclass action-discard (milter-action)
   ())
 
+(defclass action-change-sender (milter-action)
+  ((address :initarg :address
+	    :type string)
+   (parameters :initarg :parameters
+	       :type (or string null)
+	       :initform nil
+	       :documentation "Optional ESMTP parameters."))
+  (:documentation
+   "Change the envelope sender (from)."))
+
 (defclass action-add-header (milter-action)
   ((name :initarg :name
 	 :type string)
    (value :initarg :value
-	  :type string)))
+	  :type string)
+   (position :initarg :position
+	     :type (or number null)
+	     :initform nil
+	     :documentation
+	     "Optional position in the headers list: zero is the topmost.")))
 
 (defclass action-change-header (milter-action)
   ((index :initarg :index
@@ -479,12 +536,17 @@ implementations) are likely to specialise this."))
 
 (defclass action-options (milter-action)
   ((version :initarg :version
-	    :type integer
-	    :initform +milter-protocol-version+)
+	    :type integer)
    (actions :initarg :actions
 	    :type integer)
    (protocol-mask :initarg :protocol-mask
 	     :type integer)))
+
+(defclass action-skip (milter-action)
+  ()
+  (:documentation
+   "Skip further callbacks of the same type in this transaction.
+Useful after an EVENT-BODY."))
 
 (defgeneric send-action (action stream)
   (:documentation
@@ -564,6 +626,7 @@ modifying actions to the MTA."
 (define-symbol-macro progress (make-instance 'action-progress))
 (define-symbol-macro no-action (make-instance 'action-no-action))
 (define-symbol-macro temporary-failure (make-instance 'action-temporary-failure))
+(define-symbol-macro skip (make-instance 'action-skip))
 
 
 (defun month->string (month)
@@ -840,6 +903,8 @@ MTA-EVENT object."
        (make-instance 'event-end-of-message))
       (#\H
        (make-instance 'event-hello :greeting (car (decode-packet-data data '(:c-string)))))
+      (#\K
+       (make-instance 'event-disconnect))
       (#\L
        (with-packet-data data
 	 ((name :c-string) (value :c-string))
@@ -861,7 +926,11 @@ MTA-EVENT object."
       (#\R
        (with-packet-data data
 	 ((address :c-string) (options :c-strings))
-	 (make-instance 'event-recipient :address address :options options))))))
+	 (make-instance 'event-recipient :address address :options options)))
+      (#\T
+       (make-instance 'event-data))
+      (#\U
+       (make-instance 'event-unknown :command (car (decode-packet-data data '(:c-string))))))))
 
 (defconstant +action-masks-alist+
   '((:add-header	#x01)
@@ -869,18 +938,28 @@ MTA-EVENT object."
     (:add-recipient	#x04)
     (:delete-recipient	#x08)
     (:change-header	#x10)
-    (:quarantine	#x20))
+    (:quarantine	#x20)
+    (:change-sender	#x40)
+    (:add-recipient-par	#x80))
   "Alist of action bitmasks lifted from <libmilter/mfdef.h>.")
 
 (defconstant +event-masks-alist+
-  '((:connect		#x01)
-    (:hello		#x02)
-    (:mail		#x04)
-    (:recipient		#x08)
-    (:body		#x10)
-    (:header		#x20)
-    (:end-of-headers	#x40))
+  '((:connect			#x0001)
+    (:hello			#x0002)
+    (:mail			#x0004)
+    (:recipient			#x0008)
+    (:body			#x0010)
+    (:header			#x0020)
+    (:end-of-headers		#x0040)
+    (:reply-headers		#x0080)
+    (:unknown			#x0100)
+    (:data			#x0200)
+    (:skip			#x0400)
+    (:rejected-to		#x0800))
   "Alist of event bitmasks lifted from <libmilter/mfdef.h>.")
+
+(defconstant +all-events-mask+
+  (reduce #'logior +event-masks-alist+ :key #'cadr))
 
 (defun action-mask (action)
   "Lookup the action bitmask corresponding to ACTION keyword."
@@ -978,29 +1057,33 @@ the MTA."
 ;; It checks that the milter logic won't break if the MTA doesn't
 ;; fully support the milter.
 (defmethod handle-event ((event event-options) (ctx milter-context))
-  (let* ((required-events-mask (protocol-events-mask *required-events*))
+  ;; to reply the headers is the default behaviour of this milter so
+  ;; we keep the protocol the way it is
+  (let* ((required-events-mask (protocol-events-mask
+				(cons :reply-headers
+				      *required-events*)))
 	 (performed-actions-mask (actions-mask *suitable-actions*))
 	 (mta-provided-events (event-options-protocol-mask event))
 	 (mta-allowed-actions (event-options-actions event))
 	 (common-events-mask (logand required-events-mask mta-provided-events))
 	 (common-actions-mask (logand performed-actions-mask mta-allowed-actions)))
     (dprint :options "~
-milter-required-events=	~8,'0B~%~
-mta-provided-events=	~8,'0B~%~
-common-mask=		~8,'0B~2%~
-milter-actions=		~8,'0B~%~
-mta-allowed-actions=	~8,'0B~%~
-common-mask=		~8,'0B~%"
+milter-required-events=	~32,'0,'.,8:B~%~
+mta-provided-events=	~32,'0,'.,8:B~%~
+common-mask=		~32,'0,'.,8:B~2%~
+milter-actions=		~32,'0,'.,8:B~%~
+mta-allowed-actions=	~32,'0,'.,8:B~%~
+common-mask=		~32,'0,'.,8:B~%"
 	    required-events-mask
 	    mta-provided-events
 	    common-events-mask
 	    performed-actions-mask
 	    mta-allowed-actions
 	    common-actions-mask)
-    (unless (= (event-options-version event) +milter-protocol-version+)
+    (when (< (event-options-version event) +minimum-protocol-version+)
       (error 'wrong-protocol-version
 	     :mta-version (event-options-version event)
-	     :milter-version +milter-protocol-version+))
+	     :milter-version +protocol-version+))
     (unless (= common-events-mask required-events-mask)
       (error 'events-not-reported
 	     :unavailable-events (events-list-from-mask
@@ -1010,14 +1093,24 @@ common-mask=		~8,'0B~%"
 	     :forbidden-actions (actions-list-from-mask
 				 (logand (lognot mta-allowed-actions) performed-actions-mask))))
     (make-instance 'action-options
+		   :version (min +protocol-version+
+				 (event-options-version event))
 		   :actions performed-actions-mask
-		   :protocol-mask (logand mta-provided-events
-					  (lognot required-events-mask)))))
+		   :protocol-mask
+		   (logand mta-provided-events
+			   ;; we mask out some flags as these control
+			   ;; some useless aspects of the milter
+			   ;; protocol such as no-reply events
+			   +all-events-mask+
+			   (lognot required-events-mask)))))
 
 (defmethod handle-event ((event event-end-of-message) (ctx milter-context))
   accept)
 
 (defmethod handle-event ((event event-quit) (ctx milter-context))
+  nil)
+
+(defmethod handle-event ((event event-disconnect) (ctx milter-context))
   nil)
 
 (defmethod handle-event ((event event-abort) (ctx milter-context))
@@ -1026,6 +1119,10 @@ common-mask=		~8,'0B~%"
 (defmethod handle-event :before ((event mta-event) (ctx milter-context))
   (declare (ignore ctx))
   (dprint :protocol ">> ~A" event))
+
+(defmethod handle-event ((event event-unknown) (ctx milter-context))
+  (declare (ignore ctx))
+  keep-going)
 
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1097,11 +1194,15 @@ as the MILTER-ACTIONs."
   (send-action action (ctx-socket context)))
 
 (defmethod send-action ((action action-add-recipient) (stream stream))
-  (with-slots (address) action
-    (send-packet stream #\+ address #\null)))
+  (with-slots (address parameters) action
+    (if parameters
+	(send-packet stream #\2 address #\null parameters #\null)
+	(send-packet stream #\+ address #\null))))
 
 (def-simple-printer (obj action-add-recipient)
-    "ADD-RECIPIENT ~S" (slot-value obj 'address))
+    "ADD-RECIPIENT ~S~@[ (~A)~]"
+  (slot-value obj 'address)
+  (slot-value obj 'parameters))
 
 (defmethod send-action ((action action-delete-recipient) (stream stream))
   (with-slots (address) action
@@ -1131,12 +1232,23 @@ as the MILTER-ACTIONs."
 (defmethod send-action ((action action-discard) (stream stream))
   (send-packet stream #\d))
 
+(defmethod send-action ((action action-change-sender) (stream stream))
+  (with-slots (address parameters) action
+    (if parameters
+	(send-packet stream #\e address #\null parameters #\null)
+	(send-packet stream #\e address #\null))))
+
 (defmethod send-action ((action action-add-header) (stream stream))
-  (with-slots (name value) action
-    (send-packet stream #\h name #\null value #\null)))
+  (with-slots (name value position) action
+    (if position
+	(send-packet stream #\i position #\null name #\null value #\null)
+	(send-packet stream #\h name #\null value #\null))))
 
 (def-simple-printer (action action-add-header)
-    "ADD-HEADER ~A ~S" (slot-value action 'name) (slot-value action 'value))
+    "ADD-HEADER ~A ~S~@[ at postion ~A~]"
+  (slot-value action 'name)
+  (slot-value action 'value)
+  (slot-value action 'position))
 
 (defmethod send-action ((action action-change-header) (stream stream))
   (with-slots (index name value) action
@@ -1160,6 +1272,9 @@ as the MILTER-ACTIONs."
 (defmethod send-action ((action action-reject) (stream stream))
   (send-packet stream #\r))
 
+(defmethod send-action ((action action-skip) (stream stream))
+  (send-packet stream #\s))
+
 (defmethod send-action ((action action-temporary-failure) (stream stream))
   (send-packet stream #\t))
 
@@ -1178,10 +1293,12 @@ as the MILTER-ACTIONs."
 		 (encode-int32 protocol-mask))))
 
 (def-simple-printer (action action-options)
-    "OPTIONS version=~A, actions=~8,'0B ~A, events=~8,'0B ~A"
+    "OPTIONS version=~A, actions=~32,'0,'.,8:B ~A, events=~32,'0,'.,8:B ~A"
   (slot-value action 'version)
-  (slot-value action 'actions) (actions-list-from-mask (slot-value action 'actions))
-  (slot-value action 'protocol-mask) (events-list-from-mask (lognot (slot-value action 'protocol-mask))))
+  (slot-value action 'actions)
+  (actions-list-from-mask (slot-value action 'actions))
+  (slot-value action 'protocol-mask)
+  (events-list-from-mask (lognot (slot-value action 'protocol-mask))))
 
 (defmethod send-action :before ((action milter-action) stream)
   (declare (ignore stream))
@@ -1212,7 +1329,7 @@ as the MILTER-ACTIONs."
     "MAIL from=~S options=~S" (event-mail-sender event) (event-mail-options event))
 
 (def-simple-printer (event event-options)
-    "OPTIONS version=~A, actions=~8,'0B ~A, events=~8,'0B ~A"
+    "OPTIONS version=~A, actions=~32,'0,'.,8:B ~A, events=~32,'0,'.,8:B ~A"
   (event-options-version event)
   (event-options-actions event) (actions-list-from-mask (event-options-actions event))
   (event-options-protocol-mask event) (events-list-from-mask (event-options-protocol-mask event)))
