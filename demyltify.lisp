@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-05-22 14:50:21 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-06-02 20:26:01 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -513,7 +513,7 @@ behaviour is to ignore it."))
    (name :initarg :name
 	 :type string)
    (value :initarg :value
-	  :type string)))
+	  :type (or string null))))
 
 (defclass action-progress (milter-action)
   ())
@@ -1160,6 +1160,7 @@ byte sequences before sending them down the drain... socket."
 	   (loop
 	      for item in data
 	      do (etypecase item
+		   (null)
 		   (string (send-sequence (map '(vector (unsigned-byte 8)) #'char-code item) stream))
 		   (sequence (send-sequence item stream))
 		   (integer (send-byte item stream))
