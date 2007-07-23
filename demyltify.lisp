@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-06-02 20:26:01 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-23 19:07:09 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -27,23 +27,26 @@
 ;;; BEWARE: This work is based on an informal description of the
 ;;; undocumented Sendmail-milter protocol.  This code may therefore be
 ;;; outdated right now, as the Sendmail folks don't want you to mess
-;;; with this protocol, but rather want you to use their pthread based
-;;; libmilter library in C.  Although, in practice, it's unlikely that
-;;; this code will be invalidated by the next few Sendmail versions,
-;;; you never know.
+;;; with their protocol, but rather want you to use their
+;;; pthread-based libmilter library in C.  Although, in practice, it's
+;;; unlikely that this code will be invalidated by the next few
+;;; Sendmail versions, you never know.
 ;;;
-;;; To use this module, all you have to do is:
+;;; To use this library, all you have to do is:
 ;;;
 ;;;   - specialise the HANDLE-EVENT methods on all the events you care
 ;;;     about (the default definition will simply let any mail get
 ;;;     through) and set *REQUIRED-EVENTS* accordingly
 ;;;
 ;;;   - set *SUITABLE-ACTIONS* according to what your milter could be
-;;;	doing with messages
+;;;	doing with messages (This is a Sendmail's idiosyncrasy; you
+;;;	can't decide what to do on the spur of the moment, you have to
+;;;	let Sendmail know what your milter could be doing on
+;;;	messages.)
 ;;;
-;;;   - call START-MILTER with the name of the server socket you want
-;;;     to use; this can be a port number, a port name (to be found in
-;;;     /etc/services) or a pathname for a Unix domain (local) socket
+;;;   - call START-MILTER with the socket port you intend to use; this
+;;;     can be a number, a name (to be found in /etc/services) or a
+;;;     pathname for a Unix domain (local) socket
 ;;;
 ;;; The default options negotiation procedure will signal an error
 ;;; condition if the MTA doesn't fully support the milter
@@ -58,24 +61,16 @@
 ;;; This library is mostly stateless, so the programme, if it needs
 ;;; to, is responsible to save its state in the context object
 ;;; sometime in a HANDLE-EVENT method.  To do that you are supposed to
-;;; write your own context class derived from MILTER-CONTEXT and pass
-;;; it to START-MILTER.  Currently the philosophy around the context
-;;; objects comes from libmilter but, as you may have already
-;;; suspected, doesn't really make sense, if every process handles at
-;;; most a connection (a context) a time.  Yet it may turn out to be
-;;; necessary in a future multi-threaded version of this library, so
-;;; it has been kept unchanged.
+;;; write your own context class which inherits from MILTER-CONTEXT
+;;; and pass it to START-MILTER.
 ;;;
 ;;; START-MILTER is a procedure that never exits under normal
 ;;; circumstances.  It enters a loop serving MTA connections on the
 ;;; specified socket.  The default behaviour is to serve a connection
 ;;; a time which is an acceptable behaviour on small (personal)
-;;; systems, where the OS can put on hold up to five connections on
-;;; the same socket and Sendmail can anyway retry with a temporary
-;;; failure.  If you are running a server, though, this might not be
-;;; acceptable; you want to specify the :SPLIT argument.  This tells
-;;; the server loop to split the computation flow (fork) for each MTA
-;;; connection.
+;;; systems.  If you are running a server, though, this might not be
+;;; acceptable; you want to specialise the HANDLE-EVENT method for the
+;;; :CONNECTION event and do the required forking/thread-firing.
 ;;;
 ;;; In case you don't know, to install a milter in Sendmail simply add
 ;;;
@@ -113,8 +108,7 @@
 ;;; (silently ignore the message), PROGRESS (hang on, the milter is
 ;;; performing some lengthy computation), TEMPORARY-FAILURE (the
 ;;; message can't be processed by the milter because of a temporary
-;;; problem).  The macro KEEP-GOING has been chosen to avoid conflict
-;;; with the Common Lisp CONTINUE.
+;;; problem).
 ;;;
 ;;; See the bottom of this file for a trivial usage example.
 ;;;
@@ -125,9 +119,6 @@
 ;;; for documenting the MTA/milter protocol and writing the first
 ;;; implementation in Perl.
 ;;;
-
-#+nil
-(error "The feature NIL has been defined.  This has been reserved to comment out sexps.")
 
 #-(or sbcl cmu clisp)
 (warn "This code hasn't been tested on your Lisp system.")
@@ -321,12 +312,6 @@ always opened and closed at each message."
 	 ,then
 	 ,else)))
 
-;; in emacs do (put 'awhen 'lisp-indent-function 1)
-(defmacro awhen (test &body body)
-  `(let ((it ,test))
-     (when it
-       ,@body)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; CLASSES
 
@@ -438,13 +423,13 @@ message.  More messages may follow."))
   ()
   (:documentation
    "The MTA wants this milter to stop running.  By default it simply
-closes the socket connection but a program can decide to actually stop
-running."))
+closes the socket connection but a programme can decide to actually
+stop running."))
 
 (defclass event-disconnect (mta-event)
   ()
   (:documentation
-   "Similar to EVENT-QUIT, but the milter program should expect
+   "Similar to EVENT-QUIT, but the milter programme should expect
 further connections."))
 
 (defclass event-unknown (mta-event)
@@ -711,57 +696,7 @@ not nil then split at SEPARATOR only if it's not preceded by ESCAPE."
 		    (list "")))))
     (parse 0)))
 
-
-#+clisp
-(ffi:def-call-out fork (:arguments)
-  (:return-type ffi:int)
-  (:language :stdc)
-  (:library "libc.so"))
-
-#-clisp
-(defun fork ()
-  #+sbcl
-  (sb-posix:fork)
-  #+cmu
-  (unix:unix-fork))
-
-(defun quit-process ()
-  #+sbcl
-  (sb-ext:quit)
-  #+cmu
-  (extensions:quit)
-  #+clisp
-  (ext:quit))
-
-(defun run-in-subprocess (proc)
-  "Execute PROC in a separate process.  This will fork a new
-kernel process, not a Lisp thread."
-  (let ((pid (fork)))
-    (cond ((zerop pid)
-	   ;; child process
-	   (unwind-protect
-		(funcall proc)
-	     ;; whatever happens, just make sure the process dies
-	     (quit-process)))
-	  ((> pid 0)
-	   pid)
-	  (:else
-	   (signal "can't fork")))))
-
-(defun run-in-separate-thread (proc)
-  "Execute PROC in a separate thread."
-  #+cmu (mp:make-process proc :name "Demyltify connection.")
-  #-cmu (error "Multithreading not supported on your Lisp system."))
-
-(defmacro within-subprocess (&body body)
-  "Execute BODY within a forked subprocess.  See
-RUN-IN-SUBPROCESS."
-  `(run-in-subprocess #'(lambda () ,@body)))
-
-(defmacro within-separate-thread (&body body)
-  "Execute BODY in a separate thread.  See
-RUN-IN-SEPARATE-THREAD."
-  `(run-in-separate-thread #'(lambda () ,@body)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declaim (inline decode-int16 decode-int32 encode-int32))
 
@@ -794,6 +729,8 @@ order."
       (set-byte 2)
       (set-byte 3))
     buf))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun receive-byte (stream)
   "Read a byte from STREAM.  Signal MILTER-BROKEN-COMMUNICATION
@@ -1007,16 +944,6 @@ bitmask MASK."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Fallback handlers to guarantee a consistent default behaviour
 
-;; this method doesn't need to return anything special
-(defmethod handle-event ((event (eql :connection)) (ctx milter-context))
-  (declare (ignore event ctx))
-  nil)
-
-;; this method doesn't need to return anything special
-(defmethod handle-event ((event (eql :disconnection)) (ctx milter-context))
-  (declare (ignore event ctx))
-  nil)
-
 (defmethod handle-event ((event mta-event) (ctx milter-context))
   "Fallback method.  It always sends a CONTINUE message back to
 the MTA."
@@ -1036,11 +963,12 @@ the MTA."
 ;; macros spans until the next same command or a prerequisite command.
 (defmethod handle-event ((event event-define-macro) (ctx milter-context))
   ;; Store macros in the context.
-  (let ((command (event-macro-command event))
-	(definitions (event-macro-definitions event)))
-    (awhen (member command (ctx-macros ctx) :key #'car)
+  (let* ((command (event-macro-command event))
+	 (definitions (event-macro-definitions event))
+	 (macros (member command (ctx-macros ctx) :key #'car)))
+    (when macros
       ;; get rid of the old macros
-      (setf (ctx-macros ctx) (cdr it)))
+      (setf (ctx-macros ctx) (cdr macros)))
     (push (cons command definitions) (ctx-macros ctx)))
   no-action)
 
@@ -1341,60 +1269,52 @@ as the MILTER-ACTIONs."
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun serve-connection (ctx &optional error-handler)
+(defun server-loop (ctx)
   "Run the milter protocol loop using CTX as context.  It returns
 on a MILTER-CONDITION or if any event handler returns NIL instead
 of a MILTER-ACTION object."
-  (let ((*debugger-hook* (cond ((eq error-handler t)
-				#'(lambda (condition debugger-hook)
-				    (declare (ignore condition debugger-hook))
-				    (continue)))
-			       ((functionp error-handler)
-				error-handler)
-			       (t *debugger-hook*))))
-    (handler-case
-	(loop
-	   for event = (receive-event (ctx-socket ctx))
-	   for action = (handle-event event ctx)
-	   while action
-	   do (send-action action (ctx-socket ctx)))
-      (milter-broken-communication (c)
-	(dprint :protocol "~A" c))
-      (options-negotiation-error (c)
-	(dprint :error "Failure in options negotiations: ~A" c)
-	;; A protocol mismatch can break the logic of the milter,
-	;; therefore we propagate the error.
-	(error c))))
-  (handle-event :disconnection ctx)
-  ctx)
+  (unwind-protect
+       (handler-case
+	   (loop
+	      for event = (receive-event (ctx-socket ctx))
+	      for action = (handle-event event ctx)
+	      while action
+	      do (send-action action (ctx-socket ctx)))
+	 (milter-broken-communication (c)
+	   (dprint :protocol "~A" c))
+	 (options-negotiation-error (c)
+	   (dprint :error "Failure in options negotiations: ~A" c)
+	   ;; A protocol mismatch can break the logic of the milter,
+	   ;; therefore we propagate the error.
+	   (error c)))
+    (handle-event :disconnection ctx)))
 
-(defun start-milter (socket-description &key split (context-class 'milter-context) error-handler)
-  "Start the milter and enter an endless loop serving connections
-from the MTA.  SOCKET-DESCRIPTION is the socket the server should
-listen to for MTA connections.  If it's a string it's a service
-name (/etc/services).  If it's a number must be a port number.
-If it's a pathname it's the Unix domain socket (aka local).  SPLIT
-can have the following values:
+(defmethod handle-event ((event (eql :connection)) (ctx milter-context))
+  "The purpose of this method is to enter the main server loop.
+Programmes may want to specialise this method to fork a new process or
+fire a new thread and eventually do a CALL-NEXT-METHOD."
+  (declare (ignore event))
+  (server-loop ctx))
 
-  :FORK		create a kernel process for each new connection
-  :NEW-THREAD	create a Lisp thread for each new connection
-  NIL		(default) serve only one connection a time
+(defmethod handle-event ((event (eql :disconnection)) (ctx milter-context))
+  (declare (ignore event))
+  (close (ctx-socket ctx)))
 
-CONTEXT-CLASS is the class of the context objects to be passed to
-the event handlers."
-  (do-connections (socket socket-description :keep-open (eq split :new-thread))
+(defun start-milter (socket-description &key (context-class 'milter-context))
+  "Start the milter and enter an endless loop serving connections from
+the MTA.  SOCKET-DESCRIPTION is the socket the server should listen to
+for MTA connections.  If it's a string it's a service name
+\(/etc/services).  If it's a number must be a port number.  If it's a
+pathname it's the Unix domain socket (aka local).  CONTEXT-CLASS is
+the class of the context objects to be passed to the event handlers.
+It must inherit from MILTER-CONTEXT."
+  (do-connections (socket socket-description :keep-open t)
     (dprint :connect "Received connection from MTA")
     (let ((ctx (make-instance context-class :socket socket)))
-      (handle-event :connection ctx)
-      (case split
-	(:fork (within-subprocess
-		 (serve-connection ctx error-handler)))
-	(:new-thread (within-separate-thread
-		      (serve-connection ctx error-handler)))
-	(otherwise (serve-connection ctx error-handler))))))
+      (handle-event :connection ctx))))
 
 ;; This is how I spy on other milters
-#+nil
+#+(OR)
 (defun eavesdrop-milter (mta-port milter-port)
   (labels ((fd-set (fd)
 	     (ash 1 fd))
@@ -1455,7 +1375,7 @@ the event handlers."
 ;;; INPUT_MAIL_FILTER(`myfilter', `S=inet:20025@localhost, F=T')
 ;;;
 
-#+nil
+#+(OR)
 ;; in our own cozy private lexical scope we keep track of the overall
 ;; statistics
 (let ((message-counter 0)
@@ -1496,10 +1416,3 @@ for an average of ~A byte~:P per message~%"
   ;; the milter should be started something like this; passing my
   ;; context class
   (start-milter 20025 :context-class 'my-context))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Keep these lines at the bottom of this file
-;;; 
-;;; Local Variables:
-;;; eval: (put 'awhen 'lisp-indent-function 1)
-;;; End:
