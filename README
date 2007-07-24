@@ -1,1 +1,13 @@
-See http://www.sendmail.com/partner/resources/development/milter_api/
+To compile:
+
+  - copy or link demyltify.asd into your ASDF system directory
+  - start your Lisp
+  - (asdf:oos 'asdf:load-op :demyltify)
+
+Some usage examples are in the examples directory:
+
+  - simple.lisp is a milter that counts bytes in messages
+  - threaded.lisp is the threaded version of simple.lisp
+  - forked.lisp is the multi-process version of simple.lisp
+
+See also http://www.sendmail.com/partner/resources/development/milter_api/

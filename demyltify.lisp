@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-23 19:07:09 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-24 12:15:55 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -274,13 +274,10 @@ this is T, we log everything.")
   (with-open-file (stream pathname)
     (file-length stream)))
 
-;; we should do in a neater way, such as syslog
 (defun dprint (debug-feature fmt &rest args)
-  "Output formatted message to *LOG-FILE* if DEBUG-FEATURE is
-among the selected ones in *LOG-FEATURES*.  The log file is
-always opened and closed at each message."
-  ;; we should make sure that messages don't get garbled due to the
-  ;; race condition between processes -wcp28/8/04.
+  "Output formatted message to *LOG-FILE* if DEBUG-FEATURE is among
+the selected ones in *LOG-FEATURES*.  The log file is opened and
+closed at each message."
   (labels ((time-tag (out)
 	     (multiple-value-bind (ss mm hh day month year week-day dst tz) (get-decoded-time)
 	       (declare (ignore year week-day dst tz))
@@ -537,12 +534,6 @@ Useful after an EVENT-BODY."))
   (:documentation
    "Write on STREAM a byte sequence (a packet) representing the
 action."))
-
-;; Play nice with CMUCL processes (if used).
-#+cmu
-(defmethod send-action :after ((action milter-action) stream)
-  (declare (ignore action stream))
-  (mp:process-yield))
 
 (defgeneric handle-event (event context)
   (:documentation
@@ -949,12 +940,6 @@ bitmask MASK."
 the MTA."
   (declare (ignore ctx))
   keep-going)
-
-;; Play nice with CMUCL processes (if used).
-#+cmu
-(defmethod handle-event :after ((event mta-event) (ctx milter-context))
-  (declare (ignore event ctx))
-  (mp:process-yield))
 
 ;; This simple function will take care of the necessary bookkeeping
 ;; without writing all that baroque infrastructure found inside
