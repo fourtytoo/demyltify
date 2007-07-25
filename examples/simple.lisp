@@ -65,8 +65,6 @@ for an average of ~A byte~:P per message~%"
 	  (round *byte-counter* *message-counter*))
   (finish-output)
   (action ctx action-add-header :name :x-message-size
-	  ;; we need a string because send-packet can't serialise
-	  ;; integers (it can't know the required length)
 	  :value (format nil "~A" (ctx-byte-count ctx)))
   accept)
 
