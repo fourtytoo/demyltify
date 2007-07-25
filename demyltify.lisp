@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-24 12:15:55 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-25 15:34:09 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -34,6 +34,10 @@
 ;;;
 ;;; To use this library, all you have to do is:
 ;;;
+;;;   - write your own context class inheriting from MILTER-CONTEXT as
+;;;     it's unlikely that the default class carries enough state for
+;;;     your application
+;;;
 ;;;   - specialise the HANDLE-EVENT methods on all the events you care
 ;;;     about (the default definition will simply let any mail get
 ;;;     through) and set *REQUIRED-EVENTS* accordingly
@@ -41,8 +45,7 @@
 ;;;   - set *SUITABLE-ACTIONS* according to what your milter could be
 ;;;	doing with messages (This is a Sendmail's idiosyncrasy; you
 ;;;	can't decide what to do on the spur of the moment, you have to
-;;;	let Sendmail know what your milter could be doing on
-;;;	messages.)
+;;;	let Sendmail know in advance.)
 ;;;
 ;;;   - call START-MILTER with the socket port you intend to use; this
 ;;;     can be a number, a name (to be found in /etc/services) or a
@@ -72,7 +75,8 @@
 ;;; acceptable; you want to specialise the HANDLE-EVENT method for the
 ;;; :CONNECTION event and do the required forking/thread-firing.
 ;;;
-;;; In case you don't know, to install a milter in Sendmail simply add
+;;; In case you don't know, to install a milter in Sendmail you have
+;;; to add a line like this
 ;;;
 ;;; INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
 ;;;
@@ -87,11 +91,13 @@
 ;;;   (start-milter #P"/var/run/demyltify.socket")
 ;;;
 ;;; So it doesn't need to be named demyltify.socket as long as you are
-;;; consistent.  It could be, for instance:
+;;; consistent.  It could be a port as well.  For instance, in a
+;;; scenario of a dedicated milter machine (big-thought) that serves
+;;; multiple sendmail clients, every client machine must have:
 ;;;
 ;;;   INPUT_MAIL_FILTER(`filter1', `S=inet:4242@big-thought, F=T')
 ;;;
-;;; and on big-thought host:
+;;; and on big-thought server:
 ;;;
 ;;;   (start-milter 4242 :split :fork)
 ;;;

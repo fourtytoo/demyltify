@@ -4,6 +4,9 @@ To compile:
   - start your Lisp
   - (asdf:oos 'asdf:load-op :demyltify)
 
+For a tutorial on how to use this library see the beginning of
+demyltify.lisp.  It contains numerous comments and documentations.
+
 Some usage examples are in the examples directory:
 
   - simple.lisp is a milter that counts bytes in messages
