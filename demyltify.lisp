@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-25 15:34:09 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-25 16:11:16 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -40,16 +40,16 @@
 ;;;
 ;;;   - specialise the HANDLE-EVENT methods on all the events you care
 ;;;     about (the default definition will simply let any mail get
-;;;     through) and set *REQUIRED-EVENTS* accordingly
-;;;
-;;;   - set *SUITABLE-ACTIONS* according to what your milter could be
-;;;	doing with messages (This is a Sendmail's idiosyncrasy; you
-;;;	can't decide what to do on the spur of the moment, you have to
-;;;	let Sendmail know in advance.)
+;;;     through)
 ;;;
 ;;;   - call START-MILTER with the socket port you intend to use; this
 ;;;     can be a number, a name (to be found in /etc/services) or a
-;;;     pathname for a Unix domain (local) socket
+;;;     pathname for a Unix domain (local) socket.  You should also
+;;;     pass the required events you want to be notified about and the
+;;;     actions your milter intends to perform during its life.  (This
+;;;     is a Sendmail's idiosyncrasy; you can't decide what to do on
+;;;     the spur of the moment, you have to let Sendmail know in
+;;;     advance.)
 ;;;
 ;;; The default options negotiation procedure will signal an error
 ;;; condition if the MTA doesn't fully support the milter
@@ -207,8 +207,8 @@
 	   #:*log-features*
 	   #:*log-file*
 	   #:*max-log-size*
-	   #:*required-events*
-	   #:*suitable-actions*))
+	   #:*default-events*
+	   #:*default-actions*))
 
 (in-package :demyltify)
 
@@ -232,9 +232,10 @@ no logging at all.  Example: #P\"/var/log/demyltify.log\".")
   "Maximum size of the logfile.  If NIL the log file is allowed
 to grow indefinitely.")
 
-(defvar *required-events* '(:mail :recipient)
-  "List of events this milter is interested in.  They are among
-the following:
+(defvar *default-events* '(:mail :recipient)
+  "List of default events required from Sendmail if not explicitly
+specified in the creation of the context object.  They are among the
+following:
 
   :CONNECT
   :HELLO
@@ -252,7 +253,7 @@ Refrain from specifying everything, if you don't need to, as it
 would seriously impact Sendmail and the milter performance.
 Especially the :BODY events are heavy on the wire.")
 
-(defvar *suitable-actions* '()
+(defvar *default-actions* '()
   "List of actions this milter may carry on a message.  This
 doesn't mean it /will/, but simply it /could/.  It doesn't even
 mean you are allowed to; that should be negotiated with the MTA.
@@ -326,10 +327,21 @@ closed at each message."
 	   :accessor ctx-macros
 	   :documentation
 	   "Alist of alist of macros.  The primary key is the
-event type, the secondary key is the macro name."))
+event type, the secondary key is the macro name.")
+   (events :type list
+	   :initform *default-events*
+	   :initarg :events
+	   :documentation
+	   "List of events the milter is expecting from Sendmail.")
+   (actions :type list
+	    :initform *default-actions*
+	    :initarg :actions
+	    :documentation
+	    "List of actions the milter is going to perform."))
   (:documentation
    "Base class for milter contexts.  Programmes (milter
-implementations) are likely to specialise this."))
+implementations) must define their own contexts inheriting from
+this."))
 
 (defclass mta-event ()
   ())
@@ -980,8 +992,8 @@ the MTA."
   ;; we keep the protocol the way it is
   (let* ((required-events-mask (protocol-events-mask
 				(cons :reply-headers
-				      *required-events*)))
-	 (performed-actions-mask (actions-mask *suitable-actions*))
+				      *default-events*)))
+	 (performed-actions-mask (actions-mask *default-actions*))
 	 (mta-provided-events (event-options-protocol-mask event))
 	 (mta-allowed-actions (event-options-actions event))
 	 (common-events-mask (logand required-events-mask mta-provided-events))
@@ -1291,7 +1303,8 @@ fire a new thread and eventually do a CALL-NEXT-METHOD."
   (declare (ignore event))
   (close (ctx-socket ctx)))
 
-(defun start-milter (socket-description &key (context-class 'milter-context))
+(defun start-milter (socket-description &key (context-class 'milter-context)
+		     (events *default-events*) (actions *default-actions*))
   "Start the milter and enter an endless loop serving connections from
 the MTA.  SOCKET-DESCRIPTION is the socket the server should listen to
 for MTA connections.  If it's a string it's a service name
@@ -1301,7 +1314,9 @@ the class of the context objects to be passed to the event handlers.
 It must inherit from MILTER-CONTEXT."
   (do-connections (socket socket-description :keep-open t)
     (dprint :connect "Received connection from MTA")
-    (let ((ctx (make-instance context-class :socket socket)))
+    (let ((ctx (make-instance context-class :socket socket
+					    :events events
+					    :actions actions)))
       (handle-event :connection ctx))))
 
 ;; This is how I spy on other milters
