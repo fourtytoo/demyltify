@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-25 16:11:16 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-27 18:50:30 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -1301,7 +1301,7 @@ fire a new thread and eventually do a CALL-NEXT-METHOD."
 
 (defmethod handle-event ((event (eql :disconnection)) (ctx milter-context))
   (declare (ignore event))
-  (close (ctx-socket ctx)))
+  (ignore-errors (close (ctx-socket ctx))))
 
 (defun start-milter (socket-description &key (context-class 'milter-context)
 		     (events *default-events*) (actions *default-actions*))
