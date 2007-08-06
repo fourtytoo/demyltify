@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-07-27 19:04:03 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-08-06 21:07:51 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -331,10 +331,12 @@ event type, the secondary key is the macro name.")
    (events :type list
 	   :initform *default-events*
 	   :initarg :events
+	   :reader ctx-events
 	   :documentation
 	   "List of events the milter is expecting from Sendmail.")
    (actions :type list
 	    :initform *default-actions*
+	    :reader ctx-actions
 	    :initarg :actions
 	    :documentation
 	    "List of actions the milter is going to perform."))
@@ -992,8 +994,8 @@ the MTA."
   ;; we keep the protocol the way it is
   (let* ((required-events-mask (protocol-events-mask
 				(cons :reply-headers
-				      *default-events*)))
-	 (performed-actions-mask (actions-mask *default-actions*))
+				      (ctx-events ctx))))
+	 (performed-actions-mask (actions-mask (ctx-actions ctx)))
 	 (mta-provided-events (event-options-protocol-mask event))
 	 (mta-allowed-actions (event-options-actions event))
 	 (common-events-mask (logand required-events-mask mta-provided-events))
