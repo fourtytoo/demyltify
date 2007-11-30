@@ -1129,7 +1129,7 @@ as the MILTER-ACTIONs."
 (def-simple-printer (obj mta-event)
     "~A" (symbol-name (type-of obj)))
 
-;; To ease writing of handle-event for the end-of-message.
+;; To simplify writing of handle-event for the end-of-message.
 (defmethod send-action ((action milter-action) (context milter-context))
   (send-action action (ctx-socket context)))
 
@@ -1309,7 +1309,9 @@ fire a new thread and eventually do a CALL-NEXT-METHOD."
 
 (defmethod handle-event ((event (eql :disconnection)) (ctx milter-context))
   (declare (ignore event))
-  (ignore-errors (close (ctx-socket ctx) :abort t)))
+  (ignore-errors
+    (clear-output (ctx-socket ctx))
+    (close (ctx-socket ctx))))
 
 (defun start-milter (socket-description &key (context-class 'milter-context)
 		     (events *default-events*) (actions *default-actions*))
