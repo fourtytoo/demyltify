@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-08-06 21:07:51 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-11-28 18:53:08 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -990,11 +990,7 @@ the MTA."
 ;; It checks that the milter logic won't break if the MTA doesn't
 ;; fully support the milter.
 (defmethod handle-event ((event event-options) (ctx milter-context))
-  ;; to reply the headers is the default behaviour of this milter so
-  ;; we keep the protocol the way it is
-  (let* ((required-events-mask (protocol-events-mask
-				(cons :reply-headers
-				      (ctx-events ctx))))
+  (let* ((required-events-mask (protocol-events-mask (ctx-events ctx)))
 	 (performed-actions-mask (actions-mask (ctx-actions ctx)))
 	 (mta-provided-events (event-options-protocol-mask event))
 	 (mta-allowed-actions (event-options-actions event))
@@ -1017,14 +1013,18 @@ common-mask=		~32,'0,'.,8:B~%"
       (error 'wrong-protocol-version
 	     :mta-version (event-options-version event)
 	     :milter-version +protocol-version+))
+    ;; if MTA protocol is older than version 5, MTA always expects a
+    ;; reply after each header
+    (when (< (event-options-version event) 5)
+      (pushnew :reply-headers (slot-value ctx 'events)))
     (unless (= common-events-mask required-events-mask)
       (error 'events-not-reported
 	     :unavailable-events (events-list-from-mask
-				  (logand mta-provided-events required-events-mask))))
+				  (logandc1 mta-provided-events required-events-mask))))
     (unless (= common-actions-mask performed-actions-mask)
       (error 'actions-not-allowed
 	     :forbidden-actions (actions-list-from-mask
-				 (logand (lognot mta-allowed-actions) performed-actions-mask))))
+				 (logandc1 mta-allowed-actions performed-actions-mask))))
     (make-instance 'action-options
 		   :version (min +protocol-version+
 				 (event-options-version event))
@@ -1048,6 +1048,12 @@ common-mask=		~32,'0,'.,8:B~%"
 
 (defmethod handle-event ((event event-abort) (ctx milter-context))
   no-action)
+
+(defmethod handle-event ((event event-header) (ctx milter-context))
+  ;; Send a confirmation only if the MTA expects it.
+  (if (member :reply-headers (ctx-events ctx))
+      keep-going
+      no-action))
 
 (defmethod handle-event :before ((event mta-event) (ctx milter-context))
   (declare (ignore ctx))
