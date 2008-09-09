@@ -1,11 +1,11 @@
 ;;;  demyltify.lisp --- Milter Protocol library
 
-;;;  Copyright (C) 2004, 2006, 2007 by Walter C. Pelissero
+;;;  Copyright (C) 2004, 2006, 2007, 2008 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2007-11-28 18:53:08 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2008-09-09 13:28:06 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -344,6 +344,16 @@ event type, the secondary key is the macro name.")
    "Base class for milter contexts.  Programmes (milter
 implementations) must define their own contexts inheriting from
 this."))
+
+(defmethod print-object ((object milter-context) stream)
+  (if *print-readably*
+      (call-next-method)
+      (print-unreadable-object (object stream :type t :identity t)
+	(format stream "socket=~S macros=~S events=~S actions=~S"
+		(ctx-socket object)
+		(ctx-macros object)
+		(ctx-events object)
+		(ctx-actions object)))))
 
 (defclass mta-event ()
   ())
