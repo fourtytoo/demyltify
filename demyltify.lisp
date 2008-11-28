@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2008-09-09 13:28:06 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2008-10-17 18:22:08 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -617,6 +617,22 @@ action."))
 ;;; End of conditions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmethod initialize-instance ((object milter-context) &rest args)
+  (declare (ignore args))
+  (call-next-method)
+  (let ((socket (ctx-socket object)))
+    (when socket
+      (flet ((cleanup ()
+	       (ignore-errors
+		 (close-socket socket))))
+	#+cmu (ext:finalize object #'cleanup)
+	#+sbcl (sb-ext:finalize object #'cleanup)
+	#+clisp (ext:finalize object #'(lambda (socket)
+					 (declare (ignore socket))
+					 (cleanup)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defmacro action (context type &rest args)
   "Syntactic sugar handy at the end of message to send message
 modifying actions to the MTA."
@@ -833,7 +849,7 @@ specifiers."
      ,@body))
 
 (defun receive-event (stream)
-  "Receive an MTA event from STREAM.  Return the corresponding
+  "Receive an MTA event from SOCKET.  Return the corresponding
 MTA-EVENT object."
   (multiple-value-bind (command data) (receive-packet stream)
     (ecase command
@@ -1141,7 +1157,7 @@ as the MILTER-ACTIONs."
 
 ;; To simplify writing of handle-event for the end-of-message.
 (defmethod send-action ((action milter-action) (context milter-context))
-  (send-action action (ctx-socket context)))
+  (send-action action (socket-stream (ctx-socket context))))
 
 (defmethod send-action ((action action-add-recipient) (stream stream))
   (with-slots (address parameters) action
@@ -1297,10 +1313,10 @@ of a MILTER-ACTION object."
   (unwind-protect
        (handler-case
 	   (loop
-	      for event = (receive-event (ctx-socket ctx))
+	      for event = (receive-event (socket-stream (ctx-socket ctx)))
 	      for action = (handle-event event ctx)
 	      while action
-	      do (send-action action (ctx-socket ctx)))
+	      do (send-action action ctx))
 	 (milter-broken-communication (c)
 	   (dprint :protocol "~A" c))
 	 (options-negotiation-error (c)
@@ -1319,9 +1335,10 @@ fire a new thread and eventually do a CALL-NEXT-METHOD."
 
 (defmethod handle-event ((event (eql :disconnection)) (ctx milter-context))
   (declare (ignore event))
-  (ignore-errors
-    (clear-output (ctx-socket ctx))
-    (close (ctx-socket ctx))))
+  (with-slots (socket) ctx
+    (ignore-errors
+      (close-socket socket :abort t))
+    (setf socket nil)))
 
 (defun start-milter (socket-description &key (context-class 'milter-context)
 		     (events *default-events*) (actions *default-actions*))
@@ -1353,42 +1370,43 @@ It must inherit from MILTER-CONTEXT."
 	       (empty-queue? (queue)
 		 `(null ,queue)))
       (do-connections (mta-stream mta-port)
-	(format t "connection from MTA (~S) ~%" mta-stream) (finish-output)
-	(with-open-socket (milter-fd (connect-to-inet-socket "localhost" milter-port))
-	  (format t "connected to milter (~S)~%" milter-fd) (finish-output)
-	  (with-socket-stream (milter-stream milter-fd)
-	    (let ((milter->mta-queue '())
-		  (mta->milter-queue '())
-		  (mta-fd (sys:fd-stream-fd mta-stream)))
-	      (loop
-		 (multiple-value-bind (ok rfd wfd xfd)
-		     (unix:unix-select (1+ (max mta-fd milter-fd))
-				       (the (unsigned-byte 32)
-					 (logior (fd-set mta-fd)
-						 (fd-set milter-fd)))
-				       (the (unsigned-byte 32)
-					 (logior (if (empty-queue? milter->mta-queue) 0 (fd-set mta-fd))
-						 (if (empty-queue? mta->milter-queue) 0 (fd-set milter-fd))))
-				       0 1)
-		   (declare (ignore xfd))
-		   (unless ok
-		     (error "select error ~A" rfd))
-		   (format t "rfd=~A wfd=~A~%" rfd wfd) (finish-output)
-		   (when (fd-set? mta-fd rfd)
-		     (multiple-value-bind (command data)
-			 (receive-packet mta-stream)
-		       (format t "MTA-> ~S ~S~%" command data)
-		       (enqueue (list command data) mta->milter-queue)))
-		   (when (fd-set? milter-fd rfd)
-		     (multiple-value-bind (command data)
-			 (receive-packet milter-stream)
-		       (format t "milter-> ~S ~S~%" command data)
-		       (enqueue (list command data) milter->mta-queue)))
-		   (when (fd-set? mta-fd wfd)
-		     (destructuring-bind (command data) (dequeue milter->mta-queue)
-		       (format t "->MTA ~S ~S~%" command data)
-		     (send-packet mta-stream command data)))
-		   (when (fd-set? milter-fd wfd)
-		     (destructuring-bind (command data) (dequeue mta->milter-queue)
-		       (format t "->milter ~S ~S~%" command data)
-		       (send-packet milter-stream command data))))))))))))
+	(let ((mta-stream (socket-stream socket)))
+	  (format t "connection from MTA (~S) ~%" mta-stream) (finish-output)
+	  (with-open-socket (milter-fd (connect-to-inet-socket "localhost" milter-port))
+	    (format t "connected to milter (~S)~%" milter-fd) (finish-output)
+	    (with-socket-stream (milter-stream milter-fd)
+	      (let ((milter->mta-queue '())
+		    (mta->milter-queue '())
+		    (mta-fd (sys:fd-stream-fd mta-stream)))
+		(loop
+		   (multiple-value-bind (ok rfd wfd xfd)
+		       (unix:unix-select (1+ (max mta-fd milter-fd))
+					 (the (unsigned-byte 32)
+					   (logior (fd-set mta-fd)
+						   (fd-set milter-fd)))
+					 (the (unsigned-byte 32)
+					   (logior (if (empty-queue? milter->mta-queue) 0 (fd-set mta-fd))
+						   (if (empty-queue? mta->milter-queue) 0 (fd-set milter-fd))))
+					 0 1)
+		     (declare (ignore xfd))
+		     (unless ok
+		       (error "select error ~A" rfd))
+		     (format t "rfd=~A wfd=~A~%" rfd wfd) (finish-output)
+		     (when (fd-set? mta-fd rfd)
+		       (multiple-value-bind (command data)
+			   (receive-packet mta-stream)
+			 (format t "MTA-> ~S ~S~%" command data)
+			 (enqueue (list command data) mta->milter-queue)))
+		     (when (fd-set? milter-fd rfd)
+		       (multiple-value-bind (command data)
+			   (receive-packet milter-stream)
+			 (format t "milter-> ~S ~S~%" command data)
+			 (enqueue (list command data) milter->mta-queue)))
+		     (when (fd-set? mta-fd wfd)
+		       (destructuring-bind (command data) (dequeue milter->mta-queue)
+			 (format t "->MTA ~S ~S~%" command data)
+			 (send-packet mta-stream command data)))
+		     (when (fd-set? milter-fd wfd)
+		       (destructuring-bind (command data) (dequeue mta->milter-queue)
+			 (format t "->milter ~S ~S~%" command data)
+			 (send-packet milter-stream command data)))))))))))))
