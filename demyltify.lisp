@@ -1,11 +1,11 @@
 ;;;  demyltify.lisp --- Milter Protocol library
 
-;;;  Copyright (C) 2004, 2006, 2007, 2008 by Walter C. Pelissero
+;;;  Copyright (C) 2004, 2006, 2007, 2008, 2009 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2008-10-17 18:22:08 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2009-05-08 19:10:25 wcp> $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
@@ -225,7 +225,7 @@
 ;;; CONFIGURABLE OPTIONS
 
 (defvar *log-file* nil
-  "Can be a pathname, a stram, T for standard output, or NIL for
+  "Can be a pathname, a stream, T for standard output, or NIL for
 no logging at all.  Example: #P\"/var/log/demyltify.log\".")
 
 (defvar *max-log-size* nil
@@ -1000,6 +1000,7 @@ the MTA."
     (when macros
       ;; get rid of the old macros
       (setf (ctx-macros ctx) (cdr macros)))
+    (dprint :macro "define macros for command ~S:  ~S" command definitions)
     (push (cons command definitions) (ctx-macros ctx)))
   no-action)
 
