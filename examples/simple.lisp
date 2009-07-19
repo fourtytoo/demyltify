@@ -1,6 +1,6 @@
 ;;;  mymilter.lisp --- sample milter with demyltify
 
-;;;  Copyright (C) 2004, 2007 by Walter C. Pelissero
+;;;  Copyright (C) 2004, 2007, 2009 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: Demyltify
@@ -64,7 +64,7 @@ for an average of ~A byte~:P per message~%"
 	  *byte-counter*
 	  (round *byte-counter* *message-counter*))
   (finish-output)
-  (action ctx action-add-header :name :x-message-size
+  (action ctx action-add-header :name "X-Message-Size"
 	  :value (format nil "~A" (ctx-byte-count ctx)))
   accept)
 
