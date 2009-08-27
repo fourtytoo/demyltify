@@ -5,7 +5,7 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp, Time-stamp: <2009-05-08 19:10:25 wcp> $")
+#+cmu (ext:file-comment "$Module: demyltify.lisp $")
 
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License

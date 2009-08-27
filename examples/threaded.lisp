@@ -1,11 +1,11 @@
 ;;;  threaded.lisp --- sample milter with threads
 
-;;;  Copyright (C) 2007 by Walter C. Pelissero
+;;;  Copyright (C) 2007, 2009 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: Demyltify
 
-#+cmu (ext:file-comment "$Module: threaded.lisp, Time-stamp: <2007-07-24 12:23:38 wcp> $")
+#+cmu (ext:file-comment "$Module: threaded.lisp $")
 
 ;;; This program is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU General Public License as
