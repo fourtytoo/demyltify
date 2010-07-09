@@ -1,6 +1,6 @@
 ;;;  demyltify.lisp --- Milter Protocol library
 
-;;;  Copyright (C) 2004, 2006, 2007, 2008, 2009 by Walter C. Pelissero
+;;;  Copyright (C) 2004, 2006, 2007, 2008, 2009, 2010 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
@@ -225,8 +225,8 @@
 ;;; CONFIGURABLE OPTIONS
 
 (defvar *log-file* nil
-  "Can be a pathname, a stream, T for standard output, or NIL for
-no logging at all.  Example: #P\"/var/log/demyltify.log\".")
+  "Can be a pathname, a stream, or NIL for no logging at all.
+Example: #P\"/var/log/demyltify.log\".")
 
 (defvar *max-log-size* nil
   "Maximum size of the logfile.  If NIL the log file is allowed
