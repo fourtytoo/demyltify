@@ -333,13 +333,15 @@ event type, the secondary key is the macro name.")
 	   :initarg :events
 	   :reader ctx-events
 	   :documentation
-	   "List of events the milter is expecting from Sendmail.")
+	   "List of events the milter is expecting from Sendmail.
+See +EVENT-MASKS-ALIST+.")
    (actions :type list
 	    :initform *default-actions*
 	    :reader ctx-actions
 	    :initarg :actions
 	    :documentation
-	    "List of actions the milter is going to perform."))
+	    "List of actions the milter is going to perform.
+See +ACTION-MASKS-ALIST+."))
   (:documentation
    "Base class for milter contexts.  Programmes (milter
 implementations) must define their own contexts inheriting from
@@ -907,16 +909,19 @@ MTA-EVENT object."
        (make-instance 'event-unknown :command (car (decode-packet-data data '(:c-string))))))))
 
 (defconstant +action-masks-alist+
-  '((:add-header	#x01)
-    (:change-body	#x02)
-    (:add-recipient	#x04)
-    (:delete-recipient	#x08)
-    (:change-header	#x10)
-    (:quarantine	#x20)
-    (:change-sender	#x40)
-    (:add-recipient-par	#x80))
-  "Alist of action bitmasks lifted from <libmilter/mfdef.h>.")
+  '((:add-header	#x001)
+    (:change-body	#x002)
+    (:add-recipient	#x004)
+    (:delete-recipient	#x008)
+    (:change-header	#x010)
+    (:quarantine	#x020)
+    (:change-sender	#x040)
+    (:add-recipient-par	#x080)
+    (:choose-macros	#x100))
+  "Alist of action bitmasks lifted from <libmilter/mfapi.h>.")
 
+;; There would be many more flags in mfdef.h but their meaning is, at
+;; best, unclear.
 (defconstant +event-masks-alist+
   '((:connect			#x0001)
     (:hello			#x0002)
@@ -928,8 +933,12 @@ MTA-EVENT object."
     (:reply-headers		#x0080)
     (:unknown			#x0100)
     (:data			#x0200)
-    (:skip			#x0400)
-    (:rejected-to		#x0800))
+    ;; Unless I misunderstood the inexistent documentation this is no
+    ;; event.  The SKIP flag means that the MTA accepts skip actions
+    ;; (in reply to BODY events).  Which means this should have ended
+    ;; up in the actions mask, not the events one -wcp20/12/11.
+    (:can-skip			#x0400)
+    (:rejected-recipients	#x0800))
   "Alist of event bitmasks lifted from <libmilter/mfdef.h>.")
 
 (defconstant +all-events-mask+
