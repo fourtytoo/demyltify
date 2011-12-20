@@ -14,3 +14,4 @@ Some usage examples are in the examples directory:
   - forked.lisp is the multi-process version of simple.lisp
 
 See also http://www.sendmail.com/partner/resources/development/milter_api/
+or https://www.milter.org/developers/api/index
