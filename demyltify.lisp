@@ -560,10 +560,10 @@ behaviour is to ignore it."))
    "Skip further callbacks of the same type in this transaction.
 Useful after an EVENT-BODY."))
 
-(defgeneric send-action (action stream)
+(defgeneric send-action (action context)
   (:documentation
-   "Write on STREAM a byte sequence (a packet) representing the
-action."))
+   "Write on CONTEXT's stream a byte sequence (a packet) representing
+the action."))
 
 (defgeneric handle-event (event context)
   (:documentation
@@ -1156,60 +1156,71 @@ as the MILTER-ACTIONs."
 (def-simple-printer (obj mta-event)
     "~A" (symbol-name (type-of obj)))
 
-;; To simplify writing of handle-event for the end-of-message.
-(defmethod send-action ((action milter-action) (context milter-context))
-  (send-action action (socket-stream (ctx-socket context))))
+(defmacro with-ctx-stream ((ctx stream) &body forms)
+  `(let ((,stream (socket-stream (ctx-socket ,ctx))))
+     ,@forms))
 
-(defmethod send-action ((action action-add-recipient) (stream stream))
-  (with-slots (address parameters) action
-    (if parameters
-	(send-packet stream #\2 address #\null parameters #\null)
-	(send-packet stream #\+ address #\null))))
+;; (defmethod send-action ((action milter-action) (context milter-context))
+;;   (send-action action (socket-stream (ctx-socket context))))
+
+(defmethod send-action ((action action-add-recipient) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (address parameters) action
+      (if parameters
+	  (send-packet stream #\2 address #\null parameters #\null)
+	  (send-packet stream #\+ address #\null)))))
 
 (def-simple-printer (obj action-add-recipient)
     "ADD-RECIPIENT ~S~@[ (~A)~]"
   (slot-value obj 'address)
   (slot-value obj 'parameters))
 
-(defmethod send-action ((action action-delete-recipient) (stream stream))
-  (with-slots (address) action
-    (send-packet stream #\- address #\null)))
+(defmethod send-action ((action action-delete-recipient) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (address) action
+      (send-packet stream #\- address #\null))))
 
 (def-simple-printer (obj action-delete-recipient)
     "DELETE-RECIPIENT ~S" (slot-value obj 'address))
 
-(defmethod send-action ((action action-accept) (stream stream))
-  (send-packet stream #\a))
+(defmethod send-action ((action action-accept) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\a)))
 
-(defmethod send-action ((action action-replace-body) (stream stream))
-  (with-slots (body) action
-    (loop
-       with len = (length body)
-       for i from 0 by +max-body-chunk+
-       until (>= i len)
-       do (send-packet stream #\b (subseq body i (min len (+ i +max-body-chunk+)))))))
+(defmethod send-action ((action action-replace-body) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (body) action
+      (loop
+	 with len = (length body)
+	 for i from 0 by +max-body-chunk+
+	 until (>= i len)
+	 do (send-packet stream #\b (subseq body i (min len (+ i +max-body-chunk+))))))))
 
-(defmethod send-action ((action action-continue) (stream stream))
-  (send-packet stream #\c))
+(defmethod send-action ((action action-continue) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\c)))
 
-(defmethod send-action ((action action-no-action) (stream stream))
+(defmethod send-action ((action action-no-action) (ctx milter-context))
   ;; nothing to send to the MTA
   nil)
 
-(defmethod send-action ((action action-discard) (stream stream))
-  (send-packet stream #\d))
+(defmethod send-action ((action action-discard) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\d)))
 
-(defmethod send-action ((action action-change-sender) (stream stream))
-  (with-slots (address parameters) action
-    (if parameters
-	(send-packet stream #\e address #\null parameters #\null)
-	(send-packet stream #\e address #\null))))
+(defmethod send-action ((action action-change-sender) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (address parameters) action
+      (if parameters
+	  (send-packet stream #\e address #\null parameters #\null)
+	  (send-packet stream #\e address #\null)))))
 
-(defmethod send-action ((action action-add-header) (stream stream))
-  (with-slots (name value position) action
-    (if position
-	(send-packet stream #\i position #\null name #\null value #\null)
-	(send-packet stream #\h name #\null value #\null))))
+(defmethod send-action ((action action-add-header) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (name value position) action
+      (if position
+	  (send-packet stream #\i position #\null name #\null value #\null)
+	  (send-packet stream #\h name #\null value #\null)))))
 
 (def-simple-printer (action action-add-header)
     "ADD-HEADER ~A ~S~@[ at postion ~A~]"
@@ -1217,9 +1228,10 @@ as the MILTER-ACTIONs."
   (slot-value action 'value)
   (slot-value action 'position))
 
-(defmethod send-action ((action action-change-header) (stream stream))
-  (with-slots (index name value) action
-    (send-packet stream #\m (encode-int32 index) name #\null value #\null)))
+(defmethod send-action ((action action-change-header) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (index name value) action
+      (send-packet stream #\m (encode-int32 index) name #\null value #\null))))
 
 (def-simple-printer (action action-change-header)
     "CHANGE-HEADER ~A ~A ~S"
@@ -1227,37 +1239,44 @@ as the MILTER-ACTIONs."
   (slot-value action 'name)
   (slot-value action 'value))
 
-(defmethod send-action ((action action-progress) (stream stream))
-  (send-packet stream #\p))
+(defmethod send-action ((action action-progress) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\p)))
 
-(defmethod send-action ((action action-quarantine) (stream stream))
-  (send-packet stream #\q (slot-value action 'reason) #\null))
+(defmethod send-action ((action action-quarantine) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\q (slot-value action 'reason) #\null)))
 
 (def-simple-printer (action action-quarantine)
     "QUARANTINE ~S" (slot-value action 'reason))
 
-(defmethod send-action ((action action-reject) (stream stream))
-  (send-packet stream #\r))
+(defmethod send-action ((action action-reject) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\r)))
 
-(defmethod send-action ((action action-skip) (stream stream))
-  (send-packet stream #\s))
+(defmethod send-action ((action action-skip) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\s)))
 
-(defmethod send-action ((action action-temporary-failure) (stream stream))
-  (send-packet stream #\t))
+(defmethod send-action ((action action-temporary-failure) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (send-packet stream #\t)))
 
-(defmethod send-action ((action action-reply-code) (stream stream))
-  (with-slots (smtp-code text) action
-    (send-packet stream #\y (format nil "~3,'0D ~A~C" smtp-code text #\null))))
+(defmethod send-action ((action action-reply-code) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (smtp-code text) action
+      (send-packet stream #\y (format nil "~3,'0D ~A~C" smtp-code text #\null)))))
 
 (def-simple-printer (action action-reply-code)
     "REPLY-CODE ~3,'0D ~A" (slot-value action 'smtp-code) (slot-value action 'text))
 
-(defmethod send-action ((action action-options) (stream stream))
-  (with-slots (version actions protocol-mask) action
-    (send-packet stream #\O
-		 (encode-int32 version)
-		 (encode-int32 actions)
-		 (encode-int32 protocol-mask))))
+(defmethod send-action ((action action-options) (ctx milter-context))
+  (with-ctx-stream (ctx stream)
+    (with-slots (version actions protocol-mask) action
+      (send-packet stream #\O
+		   (encode-int32 version)
+		   (encode-int32 actions)
+		   (encode-int32 protocol-mask)))))
 
 (def-simple-printer (action action-options)
     "OPTIONS version=~A, actions=~32,'0,'.,8:B ~A, events=~32,'0,'.,8:B ~A"
