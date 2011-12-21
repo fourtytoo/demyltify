@@ -61,7 +61,7 @@
 ;;; something is not supported by the MTA, then you should redefine
 ;;; the HANDLE-EVENT method specialised on EVENT-OPTIONS.
 ;;;
-;;; This library is mostly stateless, so the programme, if it needs
+;;; This library is mostly stateless, so the program, if it needs
 ;;; to, is responsible to save its state in the context object
 ;;; sometime in a HANDLE-EVENT method.  To do that you are supposed to
 ;;; write your own context class which inherits from MILTER-CONTEXT
@@ -106,15 +106,14 @@
 ;;; retriable.  Read the Sendmail's cf/README file if you need further
 ;;; details.
 ;;;
-;;; Specialisation of the HANDLE-EVENT methods must return a
-;;; MILTER-ACTION object which will be sent to the MTA.  Some symbol
-;;; macros have been defined to simplify the syntax of the trivial
-;;; cases.  Those are: KEEP-GOING (continue with the next event), ACCEPT
-;;; (accept the message), REJECT (bounce the message), DISCARD
-;;; (silently ignore the message), PROGRESS (hang on, the milter is
-;;; performing some lengthy computation), TEMPORARY-FAILURE (the
-;;; message can't be processed by the milter because of a temporary
-;;; problem).
+;;; Specialisation of the HANDLE-EVENT methods must return an action
+;;; symbol or object which will be sent to the MTA.  The action
+;;; without arguments are specified as keywords.  Thos are :CONTINUE
+;;; (get on with the next event), :ACCEPT (accept the message),
+;;; :REJECT (bounce the message), :DISCARD (silently ignore the
+;;; message), :PROGRESS (hang on, the milter is performing some
+;;; lengthy computation), :TEMPORARY-FAILURE (the message can't be
+;;; processed by the milter because of a temporary problem).
 ;;;
 ;;; See the bottom of this file for a trivial usage example.
 ;;;
@@ -146,15 +145,6 @@
 	   #:ctx-events
 	   #:ctx-macros
 	   #:ctx-socket
-	   ;; symbol macros for simple actions
-	   #:keep-going
-	   #:accept
-	   #:reject
-	   #:discard
-	   #:progress
-	   #:skip
-	   #:temporary-failure
-	   #:no-action
 	   ;; the MTA event classes
 	   #:mta-event
 	   #:event-abort
@@ -174,22 +164,15 @@
 	   #:event-unknown
 	   ;; the milter actions classes
 	   #:milter-action
-	   #:action-accept
 	   #:action-add-header
 	   #:action-add-recipient
 	   #:action-change-header
 	   #:action-change-sender
-	   #:action-continue
 	   #:action-delete-recipient
-	   #:action-discard
 	   #:action-options
-	   #:action-progress
 	   #:action-quarantine
-	   #:action-reject
 	   #:action-replace-body
 	   #:action-reply-code
-	   #:action-skip
-	   #:action-temporary-failure
 	   ;; the event slot readers
 	   #:event-body-data
 	   #:event-conn-host-name
@@ -349,7 +332,7 @@ See +EVENT-MASKS-ALIST+.")
 	    "List of actions the milter is going to perform.
 See +ACTION-MASKS-ALIST+."))
   (:documentation
-   "Base class for milter contexts.  Programmes (milter
+   "Base class for milter contexts.  Programs (milter
 implementations) must define their own contexts inheriting from
 this."))
 
@@ -458,13 +441,13 @@ message.  More messages may follow."))
   ()
   (:documentation
    "The MTA wants this milter to stop running.  By default it simply
-closes the socket connection but a programme can decide to actually
+closes the socket connection but a program can decide to actually
 stop running."))
 
 (defclass event-disconnect (mta-event)
   ()
   (:documentation
-   "Similar to EVENT-QUIT, but the milter programme should expect
+   "Similar to EVENT-QUIT, but the milter program should expect
 further connections."))
 
 (defclass event-unknown (mta-event)
@@ -490,21 +473,9 @@ behaviour is to ignore it."))
   ((address :initarg :address
 	    :type string)))
 
-(defclass action-accept (milter-action)
-  ())
-
 (defclass action-replace-body (milter-action)
   ((body :initarg :body
 	 :type (vector (unsigned-byte 8)))))
-
-(defclass action-continue (milter-action)
-  ())
-
-(defclass action-no-action (milter-action)
-  ())
-
-(defclass action-discard (milter-action)
-  ())
 
 (defclass action-change-sender (milter-action)
   ((address :initarg :address
@@ -535,18 +506,9 @@ behaviour is to ignore it."))
    (value :initarg :value
 	  :type (or string null))))
 
-(defclass action-progress (milter-action)
-  ())
-
 (defclass action-quarantine (milter-action)
   ((reason :initarg :reason
 	   :type string)))
-
-(defclass action-reject (milter-action)
-  ())
-
-(defclass action-temporary-failure (milter-action)
-  ())
 
 (defclass action-reply-code (milter-action)
   ((smtp-code :initarg :smtp-code
@@ -561,12 +523,6 @@ behaviour is to ignore it."))
 	    :type integer)
    (protocol-mask :initarg :protocol-mask
 	     :type integer)))
-
-(defclass action-skip (milter-action)
-  ()
-  (:documentation
-   "Skip further callbacks of the same type in this transaction.
-Useful after an EVENT-BODY."))
 
 (defgeneric send-action (action context)
   (:documentation
@@ -645,19 +601,6 @@ the action."))
   "Syntactic sugar handy at the end of message to send message
 modifying actions to the MTA."
   `(send-action (make-instance ',type ,@args) ,context))
-
-;;
-;; Some shortcuts for the common return codes
-;;
-(define-symbol-macro keep-going (make-instance 'action-continue))
-(define-symbol-macro accept (make-instance 'action-accept))
-(define-symbol-macro reject (make-instance 'action-reject))
-(define-symbol-macro discard (make-instance 'action-discard))
-(define-symbol-macro progress (make-instance 'action-progress))
-(define-symbol-macro no-action (make-instance 'action-no-action))
-(define-symbol-macro temporary-failure (make-instance 'action-temporary-failure))
-(define-symbol-macro skip (make-instance 'action-skip))
-
 
 (defun month->string (month)
   "Return the month string corresponding to MONTH number."
@@ -1003,7 +946,7 @@ bitmask MASK."
   "Fallback method.  It always sends a CONTINUE message back to
 the MTA."
   (declare (ignore ctx))
-  keep-going)
+  :continue)
 
 ;; This simple function will take care of the necessary bookkeeping
 ;; without writing all that baroque infrastructure found inside
@@ -1020,7 +963,7 @@ the MTA."
       (setf (ctx-macros ctx) (cdr macros)))
     (dprint :macro "define macros for command ~S:  ~S" command definitions)
     (push (cons command definitions) (ctx-macros ctx)))
-  no-action)
+  :no-action)
 
 (defun get-macro (ctx name)
   (declare (type milter-context ctx))
@@ -1083,7 +1026,7 @@ common-mask=		~32,'0,'.,8:B~%"
 			   (lognot required-events-mask)))))
 
 (defmethod handle-event ((event event-end-of-message) (ctx milter-context))
-  accept)
+  :accept)
 
 (defmethod handle-event ((event event-quit) (ctx milter-context))
   nil)
@@ -1092,13 +1035,13 @@ common-mask=		~32,'0,'.,8:B~%"
   nil)
 
 (defmethod handle-event ((event event-abort) (ctx milter-context))
-  no-action)
+  :no-action)
 
 (defmethod handle-event ((event event-header) (ctx milter-context))
   ;; Send a confirmation only if the MTA expects it.
   (if (member :reply-headers (ctx-events ctx))
-      keep-going
-      no-action))
+      :continue
+      :no-action))
 
 (defmethod handle-event :before ((event mta-event) (ctx milter-context))
   (declare (ignore ctx))
@@ -1106,7 +1049,7 @@ common-mask=		~32,'0,'.,8:B~%"
 
 (defmethod handle-event ((event event-unknown) (ctx milter-context))
   (declare (ignore ctx))
-  keep-going)
+  :continue)
 
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1178,7 +1121,7 @@ as the MILTER-ACTIONs."
   `(let ((,stream (socket-stream (ctx-socket ,ctx))))
      ,@forms))
 
-(defmethod send-action :before ((action milter-action) (ctx milter-context))
+(defmethod send-action :before (action (ctx milter-context))
   (declare (ignore ctx))
   (dprint :protocol "<< ~A" action))
 
@@ -1210,7 +1153,8 @@ as the MILTER-ACTIONs."
 (def-simple-printer (obj action-delete-recipient)
     "DELETE-RECIPIENT ~S" (slot-value obj 'address))
 
-(defmethod send-action ((action action-accept) (ctx milter-context))
+(defmethod send-action ((action (eql :accept)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\a)))
 
@@ -1227,15 +1171,18 @@ as the MILTER-ACTIONs."
 	 until (>= i len)
 	 do (send-packet stream #\b (subseq body i (min len (+ i +max-body-chunk+))))))))
 
-(defmethod send-action ((action action-continue) (ctx milter-context))
+(defmethod send-action ((action (eql :continue)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\c)))
 
-(defmethod send-action ((action action-no-action) (ctx milter-context))
+(defmethod send-action ((action (eql :no-action)) (ctx milter-context))
+  (declare (ignore action ctx))
   ;; nothing to send to the MTA
   nil)
 
-(defmethod send-action ((action action-discard) (ctx milter-context))
+(defmethod send-action ((action (eql :discard)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\d)))
 
@@ -1282,7 +1229,8 @@ as the MILTER-ACTIONs."
   (slot-value action 'name)
   (slot-value action 'value))
 
-(defmethod send-action ((action action-progress) (ctx milter-context))
+(defmethod send-action ((action (eql :progress)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\p)))
 
@@ -1297,19 +1245,22 @@ as the MILTER-ACTIONs."
 (def-simple-printer (action action-quarantine)
     "QUARANTINE ~S" (slot-value action 'reason))
 
-(defmethod send-action ((action action-reject) (ctx milter-context))
+(defmethod send-action ((action (eql :reject)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\r)))
 
-(defmethod send-action :before ((action action-skip) (ctx milter-context))
+(defmethod send-action :before ((action (eql :skip)) (ctx milter-context))
   (declare (ignore action))
   (assert (member :can-skip (ctx-events ctx))))
 
-(defmethod send-action ((action action-skip) (ctx milter-context))
+(defmethod send-action ((action (eql :skip)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\s)))
 
-(defmethod send-action ((action action-temporary-failure) (ctx milter-context))
+(defmethod send-action ((action (eql :temporary-failure)) (ctx milter-context))
+  (declare (ignore action))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\t)))
 
@@ -1395,7 +1346,7 @@ of a MILTER-ACTION object."
 
 (defmethod handle-event ((event (eql :connection)) (ctx milter-context))
   "The purpose of this method is to enter the main server loop.
-Programmes may want to specialise this method to fork a new process or
+Programs may want to specialise this method to fork a new process or
 fire a new thread and eventually do a CALL-NEXT-METHOD."
   (declare (ignore event))
   (server-loop ctx))
