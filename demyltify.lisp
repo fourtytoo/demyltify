@@ -1178,8 +1178,13 @@ as the MILTER-ACTIONs."
   `(let ((,stream (socket-stream (ctx-socket ,ctx))))
      ,@forms))
 
-;; (defmethod send-action ((action milter-action) (context milter-context))
-;;   (send-action action (socket-stream (ctx-socket context))))
+(defmethod send-action :before ((action milter-action) (ctx milter-context))
+  (declare (ignore ctx))
+  (dprint :protocol "<< ~A" action))
+
+(defmethod send-action :before ((action action-add-recipient) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :add-recipient (ctx-actions ctx))))
 
 (defmethod send-action ((action action-add-recipient) (ctx milter-context))
   (with-ctx-stream (ctx stream)
@@ -1193,6 +1198,10 @@ as the MILTER-ACTIONs."
   (slot-value obj 'address)
   (slot-value obj 'parameters))
 
+(defmethod send-action :before ((action action-delete-recipient) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :delete-recipient (ctx-actions ctx))))
+
 (defmethod send-action ((action action-delete-recipient) (ctx milter-context))
   (with-ctx-stream (ctx stream)
     (with-slots (address) action
@@ -1204,6 +1213,10 @@ as the MILTER-ACTIONs."
 (defmethod send-action ((action action-accept) (ctx milter-context))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\a)))
+
+(defmethod send-action :before ((action action-replace-body) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :change-body (ctx-actions ctx))))
 
 (defmethod send-action ((action action-replace-body) (ctx milter-context))
   (with-ctx-stream (ctx stream)
@@ -1226,12 +1239,20 @@ as the MILTER-ACTIONs."
   (with-ctx-stream (ctx stream)
     (send-packet stream #\d)))
 
+(defmethod send-action :before ((action action-change-sender) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :change-sender (ctx-actions ctx))))
+
 (defmethod send-action ((action action-change-sender) (ctx milter-context))
   (with-ctx-stream (ctx stream)
     (with-slots (address parameters) action
       (if parameters
 	  (send-packet stream #\e address #\null parameters #\null)
 	  (send-packet stream #\e address #\null)))))
+
+(defmethod send-action :before ((action action-add-header) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :add-header (ctx-actions ctx))))
 
 (defmethod send-action ((action action-add-header) (ctx milter-context))
   (with-ctx-stream (ctx stream)
@@ -1245,6 +1266,10 @@ as the MILTER-ACTIONs."
   (slot-value action 'name)
   (slot-value action 'value)
   (slot-value action 'position))
+
+(defmethod send-action :before ((action action-change-header) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :change-header (ctx-actions ctx))))
 
 (defmethod send-action ((action action-change-header) (ctx milter-context))
   (with-ctx-stream (ctx stream)
@@ -1261,6 +1286,10 @@ as the MILTER-ACTIONs."
   (with-ctx-stream (ctx stream)
     (send-packet stream #\p)))
 
+(defmethod send-action :before ((action action-quarantine) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :quarantine (ctx-actions ctx))))
+
 (defmethod send-action ((action action-quarantine) (ctx milter-context))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\q (slot-value action 'reason) #\null)))
@@ -1271,6 +1300,10 @@ as the MILTER-ACTIONs."
 (defmethod send-action ((action action-reject) (ctx milter-context))
   (with-ctx-stream (ctx stream)
     (send-packet stream #\r)))
+
+(defmethod send-action :before ((action action-skip) (ctx milter-context))
+  (declare (ignore action))
+  (assert (member :can-skip (ctx-events ctx))))
 
 (defmethod send-action ((action action-skip) (ctx milter-context))
   (with-ctx-stream (ctx stream)
@@ -1303,10 +1336,6 @@ as the MILTER-ACTIONs."
   (actions-list-from-mask (slot-value action 'actions))
   (slot-value action 'protocol-mask)
   (events-list-from-mask (lognot (slot-value action 'protocol-mask))))
-
-(defmethod send-action :before ((action milter-action) stream)
-  (declare (ignore stream))
-  (dprint :protocol "<< ~A" action))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; A load of PRINT-OBJECT methods for our event objects
