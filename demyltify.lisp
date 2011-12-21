@@ -141,12 +141,18 @@
 	   #:action
 	   #:get-macro
 	   #:dprint
+	   ;; context slots
+	   #:ctx-actions
+	   #:ctx-events
+	   #:ctx-macros
+	   #:ctx-socket
 	   ;; symbol macros for simple actions
 	   #:keep-going
 	   #:accept
 	   #:reject
 	   #:discard
 	   #:progress
+	   #:skip
 	   #:temporary-failure
 	   #:no-action
 	   ;; the MTA event classes
