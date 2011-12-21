@@ -939,11 +939,14 @@ MTA-EVENT object."
     (:reply-headers		#x0080)
     (:unknown			#x0100)
     (:data			#x0200)
-    ;; Unless I misunderstood the inexistent documentation this is no
-    ;; event.  The SKIP flag means that the MTA accepts skip actions
-    ;; (in reply to BODY events).  Which means this should have ended
-    ;; up in the actions mask, not the events one -wcp20/12/11.
+    ;; Unless I misunderstood the almost inexistent documentation this
+    ;; is no event.  The SKIP flag means that the MTA accepts skip
+    ;; actions (in reply to BODY events).  Which means this should
+    ;; have ended up in the actions mask, not the events one
+    ;; -wcp20/12/11.
     (:can-skip			#x0400)
+    ;; MTA should also send RCPT commands that have been rejected
+    ;; because the user is unknown or invalid.
     (:rejected-recipients	#x0800))
   "Alist of event bitmasks lifted from <libmilter/mfdef.h>.")
 
