@@ -324,13 +324,25 @@ event type, the secondary key is the macro name.")
 	   :documentation
 	   "List of events the milter is expecting from Sendmail.
 See +EVENT-MASKS-ALIST+.")
+   (optional-events :type list
+		    :initform '()
+		    :initarg :optional-events
+		    :reader ctx-optional-events
+		    :documentation
+		    "List of events the milter may use if available.")
    (actions :type list
 	    :initform *default-actions*
 	    :reader ctx-actions
 	    :initarg :actions
 	    :documentation
 	    "List of actions the milter is going to perform.
-See +ACTION-MASKS-ALIST+."))
+See +ACTION-MASKS-ALIST+.")
+   (optional-actions :type list
+		     :initform '()
+		     :reader ctx-optional-actions
+		     :initarg :optional-actions
+		     :documentation
+		     "List of actions the milter may perform if allowed by the MTA."))
   (:documentation
    "Base class for milter contexts.  Programs (milter
 implementations) must define their own contexts inheriting from
@@ -561,13 +573,13 @@ the action."))
   ((forbidden-actions :initarg :forbidden-actions))
   (:report print-actions-not-allowed-condition))
 
-(defun print-events-not-reported-condition (condition stream)
+(defun print-events-not-supported-condition (condition stream)
   (with-slots (unavailable-events) condition
     (format stream "Milter requires unreported events ~S" unavailable-events)))
 
-(define-condition events-not-reported (options-negotiation-error)
+(define-condition events-not-supported (options-negotiation-error)
   ((unavailable-events :initarg :unavailable-events))
-  (:report print-events-not-reported-condition))
+  (:report print-events-not-supported-condition))
 
 (defun print-wrong-protocol-version-condition (condition stream)
   (with-slots (mta-version milter-version) condition
@@ -925,8 +937,8 @@ EVENTS."
   "Return the list of keywords taken from TABLE corresponding to
 the bitmask MASK."
   (loop
-     for (symbol byte) in table
-     unless (zerop (logand byte mask))
+     for (symbol bits) in table
+     when (logtest bits mask)
      collect symbol))
 
 (defun events-list-from-mask (mask)
@@ -979,22 +991,30 @@ the MTA."
 ;; fully support the milter.
 (defmethod handle-event ((event event-options) (ctx milter-context))
   (let* ((required-events-mask (protocol-events-mask (ctx-events ctx)))
-	 (performed-actions-mask (actions-mask (ctx-actions ctx)))
+	 (optional-events-mask (protocol-events-mask (ctx-optional-events ctx)))
+	 (required-actions-mask (actions-mask (ctx-actions ctx)))
+	 (optional-actions-mask (actions-mask (ctx-optional-actions ctx)))
 	 (mta-provided-events (event-options-protocol-mask event))
 	 (mta-allowed-actions (event-options-actions event))
-	 (common-events-mask (logand required-events-mask mta-provided-events))
-	 (common-actions-mask (logand performed-actions-mask mta-allowed-actions)))
+	 (common-events-mask (logand mta-provided-events
+				     (logior required-events-mask optional-events-mask)))
+	 (common-actions-mask (logand mta-allowed-actions
+				      (logior required-actions-mask optional-actions-mask))))
     (dprint :options "~
-milter-required-events=	~32,'0,'.,8:B~%~
+required-events=	~32,'0,'.,8:B~%~
+optional-events=	~32,'0,'.,8:B~%~
 mta-provided-events=	~32,'0,'.,8:B~%~
 common-mask=		~32,'0,'.,8:B~2%~
-milter-actions=		~32,'0,'.,8:B~%~
+required-actions=	~32,'0,'.,8:B~%~
+optional-actions=	~32,'0,'.,8:B~%~
 mta-allowed-actions=	~32,'0,'.,8:B~%~
 common-mask=		~32,'0,'.,8:B~%"
 	    required-events-mask
+	    optional-events-mask
 	    mta-provided-events
 	    common-events-mask
-	    performed-actions-mask
+	    required-actions-mask
+	    optional-actions-mask
 	    mta-allowed-actions
 	    common-actions-mask)
     (when (< (event-options-version event) +minimum-protocol-version+)
@@ -1005,25 +1025,31 @@ common-mask=		~32,'0,'.,8:B~%"
     ;; reply after each header
     (when (< (event-options-version event) 5)
       (pushnew :reply-headers (slot-value ctx 'events)))
-    (unless (= common-events-mask required-events-mask)
-      (error 'events-not-reported
+    (unless (= required-events-mask
+	       (logand common-events-mask required-events-mask))
+      (error 'events-not-supported
 	     :unavailable-events (events-list-from-mask
 				  (logandc1 mta-provided-events required-events-mask))))
-    (unless (= common-actions-mask performed-actions-mask)
+    (unless (= required-actions-mask
+	       (logand common-actions-mask required-actions-mask))
       (error 'actions-not-allowed
 	     :forbidden-actions (actions-list-from-mask
-				 (logandc1 mta-allowed-actions performed-actions-mask))))
+				 (logandc1 mta-allowed-actions required-actions-mask))))
+    ;; Update the events and action slots to reflect what we agree
+    ;; with the MTA.
+    (setf (slot-value ctx 'events) (events-list-from-mask common-events-mask)
+	  (slot-value ctx 'actions) (actions-list-from-mask common-actions-mask))
     (make-instance 'action-options
 		   :version (min +protocol-version+
 				 (event-options-version event))
-		   :actions performed-actions-mask
+		   :actions common-actions-mask
 		   :protocol-mask
 		   (logand mta-provided-events
 			   ;; we mask out some flags as these control
 			   ;; some useless aspects of the milter
 			   ;; protocol such as no-reply events
 			   +all-events-mask+
-			   (lognot required-events-mask)))))
+			   (lognot common-events-mask)))))
 
 (defmethod handle-event ((event event-end-of-message) (ctx milter-context))
   :accept)
@@ -1359,7 +1385,10 @@ fire a new thread and eventually do a CALL-NEXT-METHOD."
     (setf socket nil)))
 
 (defun start-milter (socket-description &key (context-class 'milter-context)
-		     (events *default-events*) (actions *default-actions*))
+		     (events *default-events*)
+		     optional-events
+		     (actions *default-actions*)
+		     optional-actions)
   "Start the milter and enter an endless loop serving connections from
 the MTA.  SOCKET-DESCRIPTION is the socket the server should listen to
 for MTA connections.  If it's a string it's a service name
@@ -1371,7 +1400,9 @@ It must inherit from MILTER-CONTEXT."
     (dprint :connect "Received connection from MTA")
     (let ((ctx (make-instance context-class :socket socket
 					    :events events
-					    :actions actions)))
+					    :optional-events optional-events
+					    :actions actions
+					    :optional-actions optional-actions)))
       (handle-event :connection ctx))))
 
 ;; This is how I spy on other milters
