@@ -1043,6 +1043,8 @@ common-mask=		~32,'0,'.,8:B~%"
 		   :version (min +protocol-version+
 				 (event-options-version event))
 		   :actions common-actions-mask
+		   ;; Not sure, but looks like here we tell the MTA
+		   ;; what event we do _not_ want.
 		   :protocol-mask
 		   (logand mta-provided-events
 			   ;; we mask out some flags as these control
@@ -1373,7 +1375,7 @@ of a MILTER-ACTION object."
 (defmethod handle-event ((event (eql :connection)) (ctx milter-context))
   "The purpose of this method is to enter the main server loop.
 Programs may want to specialise this method to fork a new process or
-fire a new thread and eventually do a CALL-NEXT-METHOD."
+fire a new thread and eventually CALL-NEXT-METHOD."
   (declare (ignore event))
   (server-loop ctx))
 
