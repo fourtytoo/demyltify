@@ -486,8 +486,7 @@ behaviour is to ignore it."))
 	    :type string)))
 
 (defclass action-replace-body (milter-action)
-  ((body :initarg :body
-	 :type (vector (unsigned-byte 8)))))
+  ((body :initarg :body)))
 
 (defclass action-change-sender (milter-action)
   ((address :initarg :address
@@ -1101,7 +1100,7 @@ can't."
 (defun send-packet (stream &rest data)
   "Send a protocol packet to the MTA through STREAM.  DATA is a
 list of Lisp objects of different nature.  Try to convert them to
-byte sequences before sending them down the drain... socket."
+byte sequences before sending them down the socket."
   (flet ((data-length (list)
 	   (loop
 	      with counter = 0
@@ -1193,11 +1192,26 @@ as the MILTER-ACTIONs."
 (defmethod send-action ((action action-replace-body) (ctx milter-context))
   (with-ctx-stream (ctx stream)
     (with-slots (body) action
-      (loop
-	 with len = (length body)
-	 for i from 0 by +max-body-chunk+
-	 until (>= i len)
-	 do (send-packet stream #\b (subseq body i (min len (+ i +max-body-chunk+))))))))
+      (flet ((send-stream (stream)
+	       (loop
+		  with buf = (make-sequence '(vector (unsigned-byte 8)) +max-body-chunk+)
+		  for end = (read-sequence buf body)
+		  until (zerop end)
+		  do (if (= end (length buf))
+			 (send-packet stream #\b buf)
+			 (send-packet stream #\b (subseq buf 0 end))))))
+	(etypecase body
+	  (sequence
+	   (loop
+	      with len = (length body)
+	      for i from 0 by +max-body-chunk+
+	      until (>= i len)
+	      do (send-packet stream #\b (subseq body i (min len (+ i +max-body-chunk+))))))
+	  (stream
+	   (send-stream body))
+	  (pathname
+	   (with-open-file (stream body)
+	     (send-stream stream))))))))
 
 (defmethod send-action ((action (eql :continue)) (ctx milter-context))
   (declare (ignore action))
