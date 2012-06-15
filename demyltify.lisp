@@ -291,6 +291,7 @@ closed at each message."
 	  (with-open-file (out *log-file*
 			   :direction :output
 			   :if-exists (if (and *max-log-size*
+					       (probe-file *log-file*)
 					       (> (file-size *log-file*) *max-log-size*))
 					  :rename
 					  :append)
@@ -1191,15 +1192,15 @@ as the MILTER-ACTIONs."
 
 (defmethod send-action ((action action-replace-body) (ctx milter-context))
   (with-ctx-stream (ctx stream)
-    (with-slots (body) action
-      (flet ((send-stream (stream)
-	       (loop
-		  with buf = (make-sequence '(vector (unsigned-byte 8)) +max-body-chunk+)
-		  for end = (read-sequence buf body)
-		  until (zerop end)
-		  do (if (= end (length buf))
-			 (send-packet stream #\b buf)
-			 (send-packet stream #\b (subseq buf 0 end))))))
+    (flet ((send-stream (in)
+	     (loop
+		with buf = (make-sequence '(vector (unsigned-byte 8)) +max-body-chunk+)
+		for end = (read-sequence buf in)
+		until (zerop end)
+		do (if (= end (length buf))
+		       (send-packet stream #\b buf)
+		       (send-packet stream #\b (subseq buf 0 end))))))
+      (with-slots (body) action
 	(etypecase body
 	  (sequence
 	   (loop
@@ -1210,7 +1211,7 @@ as the MILTER-ACTIONs."
 	  (stream
 	   (send-stream body))
 	  (pathname
-	   (with-open-file (stream body)
+	   (with-open-file (stream body :element-type '(unsigned-byte 8))
 	     (send-stream stream))))))))
 
 (defmethod send-action ((action (eql :continue)) (ctx milter-context))
