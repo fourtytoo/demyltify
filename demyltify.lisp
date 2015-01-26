@@ -973,7 +973,10 @@ the MTA."
 	 (definitions (event-macro-definitions event))
 	 (macros (member command (ctx-macros ctx) :key #'car)))
     (when macros
-      ;; get rid of the old macros
+      ;; What we do here is the equivalent of popping everything
+      ;; before and including the macros previously defined for this
+      ;; command.  Thus, the order in which the macros are defined
+      ;; matters.
       (setf (ctx-macros ctx) (cdr macros)))
     (dprint :macro "define macros for command ~S:  ~S" command definitions)
     (push (cons command definitions) (ctx-macros ctx)))
