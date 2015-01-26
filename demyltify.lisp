@@ -69,14 +69,15 @@
 ;;;
 ;;; START-MILTER is a procedure that never exits under normal
 ;;; circumstances.  It enters a loop serving MTA connections on the
-;;; specified socket.  The default behaviour is to serve a connection
-;;; a time which is an acceptable behaviour on small (personal)
-;;; systems.  If you are running a server, though, this might not be
-;;; acceptable; you want to specialise the HANDLE-EVENT method for the
-;;; :CONNECTION event and do the required forking/thread-firing.
+;;; specified socket.  The default behaviour is to call ON-CONNECTION
+;;; which is a user provided function that should call SERVER-LOOP
+;;; with a MILTER-CONTEXT instance, or a derived type.  It is
+;;; appropriate to fork or fire a new thread in this function. You
+;;; don't need to use START-MILTER, if you want to write your own
+;;; server function, go ahead, but for most practical purposes it does
+;;; what you need to connect to Sendmail.
 ;;;
-;;; In case you don't know, to install a milter in Sendmail you have
-;;; to add a line like this
+;;; To install a milter in Sendmail you have to add a line like this:
 ;;;
 ;;; INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
 ;;;
@@ -134,6 +135,7 @@
   (:nicknames :milter)
   (:use :common-lisp :net4cl)
   (:export #:start-milter
+	   #:server-loop
 	   #:handle-event
 	   #:send-action
 	   #:milter-context
@@ -1387,13 +1389,6 @@ of a MILTER-ACTION object."
 	   (error c)))
     (handle-event :disconnection ctx)))
 
-(defmethod handle-event ((event (eql :connection)) (ctx milter-context))
-  "The purpose of this method is to enter the main server loop.
-Programs may want to specialise this method to fork a new process or
-fire a new thread and eventually CALL-NEXT-METHOD."
-  (declare (ignore event))
-  (server-loop ctx))
-
 (defmethod handle-event ((event (eql :disconnection)) (ctx milter-context))
   (declare (ignore event))
   (with-slots (socket) ctx
@@ -1401,26 +1396,16 @@ fire a new thread and eventually CALL-NEXT-METHOD."
       (close-socket socket :abort t))
     (setf socket nil)))
 
-(defun start-milter (socket-description &key (context-class 'milter-context)
-		     (events *default-events*)
-		     optional-events
-		     (actions *default-actions*)
-		     optional-actions)
+(defun start-milter (socket-description on-connect)
   "Start the milter and enter an endless loop serving connections from
 the MTA.  SOCKET-DESCRIPTION is the socket the server should listen to
-for MTA connections.  If it's a string it's a service name
-\(/etc/services).  If it's a number must be a port number.  If it's a
-pathname it's the Unix domain socket (aka local).  CONTEXT-CLASS is
-the class of the context objects to be passed to the event handlers.
-It must inherit from MILTER-CONTEXT."
+for MTA connections. On each client connection ON-CONNECT is called
+passing a client socket. ON-CONNECT must call SERVER-LOOP with a
+MILTER-CONTEXT (or derived type) object having at least the :SOCKET
+object populated."
   (do-connections (socket socket-description :keep-open t)
     (dprint :connect "Received connection from MTA")
-    (let ((ctx (make-instance context-class :socket socket
-					    :events events
-					    :optional-events optional-events
-					    :actions actions
-					    :optional-actions optional-actions)))
-      (handle-event :connection ctx))))
+    (funcall on-connect socket)))
 
 ;; This is how I spy on other milters
 #+(OR)
