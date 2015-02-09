@@ -14,7 +14,7 @@ other Lisp systems should be fairly easy.
 
 ** To install and compile
 
-  - copy or link demyltify.asd into your ASDF system directory
+  - link demyltify.asd into your ASDF system directory
   - start your Lisp
   - ~(asdf:oos 'asdf:load-op :demyltify)~
 
@@ -43,15 +43,14 @@ HANDLE-EVENT methods must return an action symbol or object which will
 be sent to the MTA.  The action without arguments are specified as
 keywords.  Those are
 
-  :CONTINUE (get on with the next event)
-  :ACCEPT (accept the message)
-  :REJECT (bounce the message)
-  :DISCARD (silently ignore the message)
-  :PROGRESS (hang on, the milter is performing some lengthy computation)
-  :TEMPORARY-FAILURE (the message can't be processed by the milter because of a temporary problem)
+  :CONTINUE :: get on with the next event
+  :ACCEPT :: accept the message
+  :REJECT :: bounce the message
+  :DISCARD :: silently ignore the message
+  :PROGRESS :: hang on, the milter is performing some lengthy computation
+  :TEMPORARY-FAILURE :: the message can't be processed by the milter because of a temporary problem
 
-
-This library is mostly stateless, so the program, if it needs to, is
+This library is mostly stateless, so the program, if needs to, is
 responsible to save its state in the context object.  To do that you
 are supposed to write your own context class which inherits from
 MILTER-CONTEXT and pass it to START-MILTER.
@@ -74,11 +73,13 @@ add a line like these:
 INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
 INPUT_MAIL_FILTER(`filter2', `S=inet:20025@localhost, F=T')
 
-and compile the corresponding cf file:
+and compile the .mc into a .cf file:
 
-  cd /etc/mail
-  make
-  make install restart
+#+BEGIN_SRC lisp -n
+cd /etc/mail
+make
+make install restart
+#+END_SRC
 
 Then make sure you use the same address in the call of
 START-MILTER:
