@@ -1,6 +1,6 @@
 ;;;  demyltify.lisp --- Milter Protocol library
 
-;;;  Copyright (C) 2004, 2006, 2007, 2008, 2009, 2010 by Walter C. Pelissero
+;;;  Copyright (C) 2004-2015 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify

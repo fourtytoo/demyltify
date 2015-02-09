@@ -1,6 +1,6 @@
 ;;;  mymilter.lisp --- sample milter with demyltify
 
-;;;  Copyright (C) 2004, 2007, 2009 by Walter C. Pelissero
+;;;  Copyright (C) 2004-2015 by Walter C. Pelissero
 
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: Demyltify
