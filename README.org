@@ -141,6 +141,7 @@ A context class derives from a =MILTER-CONTEXT= like this:
     ((byte-count :accessor ctx-byte-count)))
 #+END_SRC
 
+
 *** Milter start
 
 To start the milter you simply call =start-milter= and you pass the
@@ -160,6 +161,34 @@ called with a socket as argument and, in turn, it should call
     (let ((*log-file* #P"mymilter.log"))
       (start-milter 20025 #'start-milter-loop)))
 #+END_SRC
+
+
+*** Macros
+
+Sendmail before some events passes some additional data to the milter.
+This data is in form of values associated to a symbolic name
+(macro) such as =mail_host=, =_= (the connection host), =rcpt_mailer=,
+=rcpt_host=, etc.  An association list, at the end of the day.
+
+A milter may access these values with the =GET-MACRO= function,
+passing the current context and the macro name as a string.  Example:
+
+#+BEGIN_SRC lisp -n
+  (let ((host (get-macro ctx "_")))
+    (format t "Got connection from ~A~%" host))
+#+END_SRC
+
+In an =EVENT-RECIPIENT= handler method it might be used like this:
+
+#+BEGIN_SRC lisp -n
+(defmethod handle-event ((event event-recipient) (ctx march-context))
+  (push (make-recipient :address (extract-mail-address (event-recipient-address event))
+			:mailer (get-macro ctx "rcpt_mailer")
+			:host (get-macro ctx "rcpt_host"))
+	(ctx-my-recipients ctx))
+  :continue)
+#+END_SRC
+
 
 
 *** Sendmail configuration
