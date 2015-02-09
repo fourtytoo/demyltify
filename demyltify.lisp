@@ -5,8 +5,6 @@
 ;;;  Author: Walter C. Pelissero <walter@pelissero.de>
 ;;;  Project: demyltify
 
-#+cmu (ext:file-comment "$Module: demyltify.lisp $")
-
 ;;; This library is free software; you can redistribute it and/or
 ;;; modify it under the terms of the GNU Lesser General Public License
 ;;; as published by the Free Software Foundation; either version 2.1
@@ -20,112 +18,6 @@
 ;;; Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 ;;; 02111-1307 USA
 
-;;;  Commentary:
-;;;
-;;; Building blocks to make your own milter in Common Lisp.
-;;;
-;;; BEWARE: This work is based on an informal description of the
-;;; undocumented Sendmail-milter protocol.  This code may therefore be
-;;; outdated right now, as the Sendmail folks don't want you to mess
-;;; with their protocol, but rather want you to use their
-;;; pthread-based libmilter library in C.  Although, in practice, it's
-;;; unlikely that this code will be invalidated by the next few
-;;; Sendmail versions, you never know.
-;;;
-;;; To use this library, all you have to do is:
-;;;
-;;;   - write your own context class inheriting from MILTER-CONTEXT as
-;;;     it's unlikely that the default class carries enough state for
-;;;     your application
-;;;
-;;;   - specialise the HANDLE-EVENT methods on all the events you care
-;;;     about (the default definition will simply let any mail get
-;;;     through)
-;;;
-;;;   - call START-MILTER with the socket port you intend to use; this
-;;;     can be a number, a name (to be found in /etc/services) or a
-;;;     pathname for a Unix domain (local) socket.  You should also
-;;;     pass the required events you want to be notified about and the
-;;;     actions your milter intends to perform during its life.  (This
-;;;     is a Sendmail's idiosyncrasy; you can't decide what to do on
-;;;     the spur of the moment, you have to let Sendmail know in
-;;;     advance.)
-;;;
-;;; The default options negotiation procedure will signal an error
-;;; condition if the MTA doesn't fully support the milter
-;;; prerequisites.  This is a sensible behaviour considering that, if
-;;; the MTA doesn't match the performed actions and required events of
-;;; the milter, there is very little the milter can do about it; it
-;;; will simply not work.  In the exceptional case your milter is
-;;; smart enough to be able to fall back to a different behaviour, if
-;;; something is not supported by the MTA, then you should redefine
-;;; the HANDLE-EVENT method specialised on EVENT-OPTIONS.
-;;;
-;;; This library is mostly stateless, so the program, if it needs
-;;; to, is responsible to save its state in the context object
-;;; sometime in a HANDLE-EVENT method.  To do that you are supposed to
-;;; write your own context class which inherits from MILTER-CONTEXT
-;;; and pass it to START-MILTER.
-;;;
-;;; START-MILTER is a procedure that never exits under normal
-;;; circumstances.  It enters a loop serving MTA connections on the
-;;; specified socket.  The default behaviour is to call ON-CONNECTION
-;;; which is a user provided function that should call SERVER-LOOP
-;;; with a MILTER-CONTEXT instance, or a derived type.  It is
-;;; appropriate to fork or fire a new thread in this function. You
-;;; don't need to use START-MILTER, if you want to write your own
-;;; server function, go ahead, but for most practical purposes it does
-;;; what you need to connect to Sendmail.
-;;;
-;;; To install a milter in Sendmail you have to add a line like this:
-;;;
-;;; INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
-;;;
-;;; at the end of your /etc/mail/sendmail.mc (or whatever mc file name
-;;; you happen to use) and compile the corresponding cf file:
-;;;
-;;;   cd /etc/mail; make sendmail.cf
-;;;
-;;; Then make sure you use the same socket pathname in the call of
-;;; START-MILTER:
-;;;
-;;;   (start-milter #P"/var/run/demyltify.socket")
-;;;
-;;; So it doesn't need to be named demyltify.socket as long as you are
-;;; consistent.  It could be a port as well.  For instance, in a
-;;; scenario of a dedicated milter machine (big-thought) that serves
-;;; multiple sendmail clients, every client machine must have:
-;;;
-;;;   INPUT_MAIL_FILTER(`filter1', `S=inet:4242@big-thought, F=T')
-;;;
-;;; and on big-thought server:
-;;;
-;;;   (start-milter 4242 :split :fork)
-;;;
-;;; The F=T flag tells Sendmail to treat milter-related errors (ie
-;;; milter not listening or crashing) as temporary and therefore
-;;; retriable.  Read the Sendmail's cf/README file if you need further
-;;; details.
-;;;
-;;; Specialisation of the HANDLE-EVENT methods must return an action
-;;; symbol or object which will be sent to the MTA.  The action
-;;; without arguments are specified as keywords.  Thos are :CONTINUE
-;;; (get on with the next event), :ACCEPT (accept the message),
-;;; :REJECT (bounce the message), :DISCARD (silently ignore the
-;;; message), :PROGRESS (hang on, the milter is performing some
-;;; lengthy computation), :TEMPORARY-FAILURE (the message can't be
-;;; processed by the milter because of a temporary problem).
-;;;
-;;; See the bottom of this file for a trivial usage example.
-;;;
-;;; This code has been tested on SBCL, CMUCL and CLISP.  Porting to
-;;; other Lisp systems should be fairly easy.
-;;;
-;;; Credit should be given to Todd Vierling (tv@pobox.com tv@duh.org)
-;;; for documenting the MTA/milter protocol and writing the first
-;;; implementation in Perl.
-;;;
-
 #-(or sbcl cmu clisp)
 (warn "This code hasn't been tested on your Lisp system.")
 
@@ -133,7 +25,7 @@
 
 (defpackage :demyltify
   (:nicknames :milter)
-  (:use :common-lisp :net4cl)
+  (:use :common-lisp :sclf :net4cl)
   (:export #:start-milter
 	   #:server-loop
 	   #:handle-event
@@ -203,13 +95,13 @@
 
 (in-package :demyltify)
 
-(defconstant +max-body-chunk+ 65535
+(defconst +max-body-chunk+ 65535
   "Maximum size of a replace-body message to the MTA.")
 
-(defconstant +protocol-version+ 6
+(defconst +protocol-version+ 6
   "Protocol version number spoken by this library.")
 
-(defconstant +minimum-protocol-version+ 2
+(defconst +minimum-protocol-version+ 2
   "Minimum protocol version accepted by this library.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -871,7 +763,7 @@ MTA-EVENT object."
       (#\U
        (make-instance 'event-unknown :command (car (decode-packet-data data '(:c-string))))))))
 
-(defconstant +action-masks-alist+
+(defconst +action-masks-alist+
   '((:add-header	#x001)
     (:change-body	#x002)
     (:add-recipient	#x004)
@@ -885,7 +777,7 @@ MTA-EVENT object."
 
 ;; There would be many more flags in mfdef.h but their meaning is, at
 ;; best, unclear.
-(defconstant +event-masks-alist+
+(defconst +event-masks-alist+
   '((:connect			#x0001)
     (:hello			#x0002)
     (:mail			#x0004)
@@ -907,7 +799,7 @@ MTA-EVENT object."
     (:rejected-recipients	#x0800))
   "Alist of event bitmasks lifted from <libmilter/mfdef.h>.")
 
-(defconstant +all-events-mask+
+(defconst +all-events-mask+
   (reduce #'logior +event-masks-alist+ :key #'cadr))
 
 (defun action-mask (action)
@@ -1409,58 +1301,3 @@ object populated."
   (do-connections (socket socket-description :keep-open t)
     (dprint :connect "Received connection from MTA")
     (funcall on-connect socket)))
-
-;; This is how I spy on other milters
-#+(OR)
-(defun eavesdrop-milter (mta-port milter-port)
-  (labels ((fd-set (fd)
-	     (ash 1 fd))
-	   (fd-set? (fd set)
-	     (not (zerop (logand (fd-set fd) set)))))
-    (macrolet ((enqueue (obj queue)
-		 `(setf ,queue (nconc ,queue (list ,obj))))
-	       (dequeue (queue)
-		 `(pop ,queue))
-	       (empty-queue? (queue)
-		 `(null ,queue)))
-      (do-connections (mta-stream mta-port)
-	(let ((mta-stream (socket-stream socket)))
-	  (format t "connection from MTA (~S) ~%" mta-stream) (finish-output)
-	  (with-open-socket (milter-fd (connect-to-inet-socket "localhost" milter-port))
-	    (format t "connected to milter (~S)~%" milter-fd) (finish-output)
-	    (with-socket-stream (milter-stream milter-fd)
-	      (let ((milter->mta-queue '())
-		    (mta->milter-queue '())
-		    (mta-fd (sys:fd-stream-fd mta-stream)))
-		(loop
-		   (multiple-value-bind (ok rfd wfd xfd)
-		       (unix:unix-select (1+ (max mta-fd milter-fd))
-					 (the (unsigned-byte 32)
-					   (logior (fd-set mta-fd)
-						   (fd-set milter-fd)))
-					 (the (unsigned-byte 32)
-					   (logior (if (empty-queue? milter->mta-queue) 0 (fd-set mta-fd))
-						   (if (empty-queue? mta->milter-queue) 0 (fd-set milter-fd))))
-					 0 1)
-		     (declare (ignore xfd))
-		     (unless ok
-		       (error "select error ~A" rfd))
-		     (format t "rfd=~A wfd=~A~%" rfd wfd) (finish-output)
-		     (when (fd-set? mta-fd rfd)
-		       (multiple-value-bind (command data)
-			   (receive-packet mta-stream)
-			 (format t "MTA-> ~S ~S~%" command data)
-			 (enqueue (list command data) mta->milter-queue)))
-		     (when (fd-set? milter-fd rfd)
-		       (multiple-value-bind (command data)
-			   (receive-packet milter-stream)
-			 (format t "milter-> ~S ~S~%" command data)
-			 (enqueue (list command data) milter->mta-queue)))
-		     (when (fd-set? mta-fd wfd)
-		       (destructuring-bind (command data) (dequeue milter->mta-queue)
-			 (format t "->MTA ~S ~S~%" command data)
-			 (send-packet mta-stream command data)))
-		     (when (fd-set? milter-fd wfd)
-		       (destructuring-bind (command data) (dequeue mta->milter-queue)
-			 (format t "->milter ~S ~S~%" command data)
-			 (send-packet milter-stream command data)))))))))))))

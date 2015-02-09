@@ -1,0 +1,125 @@
+* demyltify: a milter library in Common Lisp.
+
+_BEWARE_: This work is based on an informal description of the
+undocumented Sendmail-milter protocol.  This code may therefore be
+outdated right now, as the Sendmail folks don't want you to mess with
+their protocol.  They rather want you to use their pthread-based
+libmilter library in C.  Although, in practice, it's unlikely that
+this code will be invalidated by the next few Sendmail versions, you
+never know.
+
+This code has been tested on SBCL, CMUCL and CLISP.  Porting to
+other Lisp systems should be fairly easy.
+
+
+** To install and compile
+
+  - copy or link demyltify.asd into your ASDF system directory
+  - start your Lisp
+  - ~(asdf:oos 'asdf:load-op :demyltify)~
+
+
+** Usage
+
+To use this library, all you have to do is:
+
+  - write your own context class inheriting from MILTER-CONTEXT
+  - specialise the HANDLE-EVENT methods on your MILTER-CONTEXT class
+    for all the events you care about (the default definition will
+    simply let any mail through)
+  - call START-MILTER
+
+The default options negotiation procedure will signal an error
+condition if the MTA doesn't fully support the milter prerequisites.
+This is a sensible behaviour considering that, if the MTA doesn't
+match the performed actions and required events of the milter, there
+is very little the milter can do about it; it will simply not work.
+In the exceptional case your milter is smart enough to be able to fall
+back to a different behaviour, if something is not supported by the
+MTA, then you should override the HANDLE-EVENT method specialised on
+EVENT-OPTIONS (and your MILTER-CONTEXT).
+
+HANDLE-EVENT methods must return an action symbol or object which will
+be sent to the MTA.  The action without arguments are specified as
+keywords.  Those are
+
+  :CONTINUE (get on with the next event)
+  :ACCEPT (accept the message)
+  :REJECT (bounce the message)
+  :DISCARD (silently ignore the message)
+  :PROGRESS (hang on, the milter is performing some lengthy computation)
+  :TEMPORARY-FAILURE (the message can't be processed by the milter because of a temporary problem)
+
+
+This library is mostly stateless, so the program, if it needs to, is
+responsible to save its state in the context object.  To do that you
+are supposed to write your own context class which inherits from
+MILTER-CONTEXT and pass it to START-MILTER.
+
+START-MILTER is a procedure that never exits under normal
+circumstances.  It enters a loop serving MTA connections on the
+specified socket.  The default behaviour is to call ON-CONNECTION
+which is a user provided function that should call SERVER-LOOP with a
+MILTER-CONTEXT instance, or a derived type.  It is appropriate to fork
+or fire a new thread in this function. You don't need to use
+START-MILTER, if you want to write your own server function, go ahead,
+but for most practical purposes it does what you need to connect to
+Sendmail.
+
+*** Sendmail configuration
+
+To install a milter in Sendmail, in /etc/mail/sendmail.mc, you have to
+add a line like these:
+
+INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
+INPUT_MAIL_FILTER(`filter2', `S=inet:20025@localhost, F=T')
+
+and compile the corresponding cf file:
+
+  cd /etc/mail
+  make
+  make install restart
+
+Then make sure you use the same address in the call of
+START-MILTER:
+
+#+BEGIN_SRC lisp -n
+(start-milter #P"/var/run/demyltify.socket" #'my-connect-callback)
+(start-milter 20025 #'my-connect-callback)
+#+END_SRC
+
+The F=T flag tells Sendmail to treat milter-related errors (ie
+milter not listening or crashing) as temporary and therefore
+retriable.  Read the Sendmail's cf/README file if you need further
+details.
+
+
+** See also
+
+Some sample code is in the examples directory:
+
+  - simple.lisp is a milter that counts bytes in messages
+  - threaded.lisp is the threaded version of simple.lisp
+  - forked.lisp is the multi-process version of simple.lisp
+
+The following pages caould be useful to understand what a milter is
+and what it does:
+
+ - http://www.sendmail.com/partner/resources/development/milter_api/
+ - https://www.milter.org/developers/api/index
+
+
+** Credits
+
+Credit should be given to Todd Vierling (tv@pobox.com tv@duh.org)
+for documenting the MTA/milter protocol and writing the first
+implementation in Perl.
+
+
+
+** License
+
+Copyright © 2015 Walter C. Pelissero <walter@pelissero.de>
+
+Distributed under the GNU Lesser General Public License either version
+2 or (at your option) any later version.
