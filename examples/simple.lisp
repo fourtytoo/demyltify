@@ -64,14 +64,19 @@ for an average of ~A byte~:P per message~%"
 	  *byte-counter*
 	  (round *byte-counter* *message-counter*))
   (finish-output)
-  (action ctx action-add-header :name "X-Message-Size"
+  (action ctx action-add-header
+	  :name "X-Message-Size"
 	  :value (format nil "~A" (ctx-byte-count ctx)))
   accept)
 
+(defun start-milter-loop (socket)
+  (be context (make-instance 'march-context
+			     :socket socket
+			     :events '(:mail :body)
+			     :actions '(:add-header))
+    (server-loop context)))
+
 (defun start-my-milter ()
-  ;; we need to know about body events to get the body length
-  (let ((*required-events* '(:mail :body :header :end-of-headers))
-	(*suitable-actions* '(:add-header))
-	;; (*log-features* t)
-	(*log-file* #P"mymilter.log"))
-    (start-milter 20025 :context-class 'my-context)))
+  (let ((*log-file* #P"mymilter.log"))
+    (start-milter 20025 #'start-milter-loop)))
+
