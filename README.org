@@ -29,10 +29,10 @@ The milter library binds a socket to that port and waits for Sendmail
 connections.
 
 For each connection, the milter library calls the callback function
-that was provided in the call to =START-MILTER= passing a socket.  The
-callback, in turn, must call =SERVER-LOOP= with the context object
-that usually will contain further state data and milter options such
-as the protocol options.
+that was provided to =START-MILTER=, passing a socket.  The callback,
+in turn, must call =SERVER-LOOP= with the context object that usually
+will contain further state data and milter options such as the
+protocol options.
 
 On each event received from Sendmail, the library calls the relevant
 handler (method).  Each event method accepts an event object and a
