@@ -1,15 +1,25 @@
-* demyltify: a milter library in Common Lisp.
+* DEMYLTIFY: a milter library in Common Lisp
 
-_BEWARE_: This work is based on an informal description of the
-undocumented Sendmail-milter protocol.  This code may therefore be
-outdated right now, as the Sendmail folks don't want you to mess with
-their protocol.  They rather want you to use their pthread-based
-libmilter library in C.  Although, in practice, it's unlikely that
-this code will be invalidated by the next few Sendmail versions, you
-never know.
+This is a Common Lisp library to implement milters.  A milter is a
+Sendmail filter (hence the contraction); a daemon program that extends
+and augments the Sendmail functionality and implements features that
+are not provided by Sendmail itself, such as spam filtering, virus
+protection, mail archiving, mailing lists etc.  Matter of fact, much
+of the logic behind Sendmail routing and access control could, in
+fact, be off loaded to a milter or a composition of milters.
 
-This code has been tested on SBCL, CMUCL and CLISP.  Porting to
-other Lisp systems should be fairly easy.
+Milters are usually C programs linked to the libmilter library, which
+comes with Sendmail.  Interfacing to such library is not always an
+option, especially for many Lisp systems.
+
+The libmilter library implements the milter protocol, the
+(de)serialisation of the data and the multi-threading.  This is what
+demyltify does as well, in a more lispy style.
+
+Milters written with demyltify don't need to be multi-thread.  It's
+up to you whether, in the ON-CONNECTION callback, you want to spawn a
+new thread, fork a new process, or simply do nothing special to handle
+Sendmail connections.
 
 
 ** To install and compile
@@ -29,26 +39,22 @@ To use this library, all you have to do is:
     simply let any mail through)
   - call START-MILTER
 
-The default options negotiation procedure will signal an error
-condition if the MTA doesn't fully support the milter prerequisites.
-This is a sensible behaviour considering that, if the MTA doesn't
-match the performed actions and required events of the milter, there
-is very little the milter can do about it; it will simply not work.
-In the exceptional case your milter is smart enough to be able to fall
-back to a different behaviour, if something is not supported by the
-MTA, then you should override the HANDLE-EVENT method specialised on
-EVENT-OPTIONS (and your MILTER-CONTEXT).
+The default options negotiation method will signal an error condition
+if the MTA doesn't fully support the milter prerequisites.  This is a
+sensible behaviour considering that, if the MTA doesn't match the
+performed actions and required events of the milter, there is very
+little the milter can do about it; it will simply not work.
 
 HANDLE-EVENT methods must return an action symbol or object which will
 be sent to the MTA.  The action without arguments are specified as
 keywords.  Those are
 
-  CONTINUE :: get on with the next event
-  ACCEPT :: accept the message
-  REJECT :: bounce the message
-  DISCARD :: silently ignore the message
-  PROGRESS :: hang on, the milter is performing some lengthy computation
-  TEMPORARY-FAILURE :: the message can't be processed by the milter because of a temporary problem
+  + :CONTINUE get on with the next event
+  + :ACCEPT accept the message
+  + :REJECT bounce the message
+  + :DISCARD silently ignore the message
+  + :PROGRESS hang on, the milter is performing some lengthy computation
+  + :TEMPORARY-FAILURE the message can't be processed by the milter because of a temporary problem
 
 This library is mostly stateless, so the program, if needs to, is
 responsible to save its state in the context object.  To do that you
@@ -91,10 +97,9 @@ START-MILTER:
   (start-milter 20025 #'my-connect-callback)
 #+END_SRC
 
-The F=T flag tells Sendmail to treat milter-related errors (ie
-milter not listening or crashing) as temporary and therefore
-retriable.  Read the Sendmail's cf/README file if you need further
-details.
+The F=T flag tells Sendmail to treat milter-related errors (ie milter
+not listening or crashing) as temporary.  Read the Sendmail's
+cf/README file if you need further details.
 
 
 ** See also
@@ -105,16 +110,29 @@ Some sample code is in the examples directory:
   - threaded.lisp is the threaded version of simple.lisp
   - forked.lisp is the multi-process version of simple.lisp
 
-The following pages caould be useful to understand what a milter is
+The following pages could be useful to understand what a milter is
 and what it does:
 
  - http://www.sendmail.com/partner/resources/development/milter_api/
  - https://www.milter.org/developers/api/index
 
 
+** Gotchas
+
+This work is based on an informal description of the undocumented
+Sendmail-milter protocol.  This code may therefore be outdated right
+now, as the Sendmail folks don't want you to mess with their protocol.
+They rather want you to use their pthread-based libmilter library in
+C.  Although, in practice, it's unlikely that this code will be
+invalidated by the next few Sendmail versions, you never know.
+
+This code has been tested on SBCL, CMUCL and CLISP.  Porting to
+other Lisp systems should be fairly easy.
+
+
 ** Credits
 
-Credit should be given to Todd Vierling (tv@pobox.com tv@duh.org)
+Credit should be given to Todd Vierling (tv@pobox.com, tv@duh.org)
 for documenting the MTA/milter protocol and writing the first
 implementation in Perl.
 
