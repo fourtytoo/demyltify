@@ -135,7 +135,7 @@ circumstances you shouldn't bother with them:
 
 A context class derives from a =MILTER-CONTEXT= like this:
 
-#+BEGIN_SRC common-lisp -n
+#+BEGIN_SRC lisp -n
   ;; we specialise the context to add the byte count per message
   (defclass my-context (milter-context)
     ((byte-count :accessor ctx-byte-count)))
