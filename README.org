@@ -81,8 +81,8 @@ are supposed to write your own context class which inherits from
 The lifetime of a context object is the same as the Sendmail
 connection.  The user program has to make sure that it resets whatever
 state, in the context, that is message-specific, at every message
-boundary.  Usually good places are the =END-OF-MESSAGE= and the
-=ABORT= handlers.
+boundary.  Usually good places are the =MAIL= or the
+=END-OF-MESSAGE=/=ABORT= handlers.
 
 =START-MILTER= is a procedure that never exits under normal
 circumstances.  It enters a loop serving MTA connections on the
@@ -90,6 +90,77 @@ specified socket.  It is appropriate for the =ON-CONNECTION= function to
 fork or fire a new thread. You don't need to use =START-MILTER=, if you
 want to write your own server function, go ahead, but for most
 practical purposes it does what you need to connect to Sendmail.
+
+*** The event handlers
+
+The event handlers are CLOS methods specialised on the event type and
+the context.
+
+#+BEGIN_SRC lisp -n
+  ;; here we add up the byte count per message
+  (defmethod handle-event ((e event-body) (ctx my-context))
+    (incf (ctx-byte-count ctx) (length (event-body-data e)))
+    keep-going)
+
+  ;; at the beginning of each message we reset the counter
+  (defmethod handle-event ((e event-mail) (ctx my-context))
+    (setf (ctx-byte-count ctx) 0)
+    keep-going)
+#+END_SRC
+
+The events a milter can handle are:
+
+ - =EVENT-ABORT= when Sendmail aborts the current message (others may follow)
+ - =EVENT-BODY= a chunk of the message body (passed the headers)
+ - =EVENT-CONNECT= when a client MTA connects to our Sendmail
+ - =EVENT-DATA= marks the beginning of the message body
+ - =EVENT-DISCONNECT= Sendmail wishes to disconnect but it will connect
+   again later
+ - =EVENT-END-OF-HEADERS= to signal the end of the email's headers part
+ - =EVENT-END-OF-MESSAGE= at the end of a message body
+ - =EVENT-HEADER= for each email header
+ - =EVENT-HELLO= when Sendmail sees a HELO from its client
+ - =EVENT-MAIL= when Sendmail receives a MAIL command from its client
+ - =EVENT-QUIT= when Sendmail asks the milter to lay down and die
+ - =EVENT-RECIPIENT= for each recipient on the email envelope
+ - =EVENT-UNKOWN= invalid SMTP command from Sendmail's client
+
+Internally the milter library handles the following events.  In normal
+circumstances you shouldn't bother with them:
+
+ - =EVENT-DEFINE-MACRO= definition of symbolic values that supplement
+   other events
+ - =EVENT-OPTIONS= negotiation of event and actions between Sendmail and
+   the milter
+
+A context class derives from a =MILTER-CONTEXT= like this:
+
+#+BEGIN_SRC lisp -n
+  ;; we specialise the context to add the byte count per message
+  (defclass my-context (milter-context)
+    ((byte-count :accessor ctx-byte-count)))
+#+END_SRC
+
+*** Milter start
+
+To start the milter you simply call =start-milter= and you pass the
+internet port and the connection callback.  The callback will be
+called with a socket as argument and, in turn, it should call
+=server-loop= passing a milter context of your choice.  Example:
+
+#+BEGIN_SRC lisp -n
+  (defun start-milter-loop (socket)
+    (be context (make-instance 'march-context
+                               :socket socket
+                               :events '(:mail :body)
+                               :actions '(:add-header))
+      (server-loop context)))
+
+  (defun start-my-milter ()
+    (let ((*log-file* #P"mymilter.log"))
+      (start-milter 20025 #'start-milter-loop)))
+#+END_SRC
+
 
 *** Sendmail configuration
 
@@ -120,6 +191,9 @@ Then make sure you use the same address in the call of
 The ~F=T~ flag tells Sendmail to treat milter-related errors (ie milter
 not listening or crashing) as temporary.  Read the Sendmail's
 cf/README file if you need further details.
+
+Sendmail does not start the milters.  You have to do that yourself at
+boot time (anyhow, before Sendmail needs them to process a message).
 
 
 ** See also
