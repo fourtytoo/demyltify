@@ -82,7 +82,7 @@ The lifetime of a context object is the same as the Sendmail
 connection.  The user program has to make sure that it resets whatever
 state, in the context, that is message-specific, at every message
 boundary.  Usually good places are the =MAIL= or the
-=END-OF-MESSAGE=/=ABORT= handlers.
+=END-OF-MESSAGE= / =ABORT= handlers.
 
 =START-MILTER= is a procedure that never exits under normal
 circumstances.  It enters a loop serving MTA connections on the
@@ -135,7 +135,7 @@ circumstances you shouldn't bother with them:
 
 A context class derives from a =MILTER-CONTEXT= like this:
 
-#+BEGIN_SRC lisp -n
+#+BEGIN_SRC common-lisp -n
   ;; we specialise the context to add the byte count per message
   (defclass my-context (milter-context)
     ((byte-count :accessor ctx-byte-count)))
