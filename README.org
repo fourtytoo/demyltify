@@ -43,12 +43,12 @@ HANDLE-EVENT methods must return an action symbol or object which will
 be sent to the MTA.  The action without arguments are specified as
 keywords.  Those are
 
-  :CONTINUE :: get on with the next event
-  :ACCEPT :: accept the message
-  :REJECT :: bounce the message
-  :DISCARD :: silently ignore the message
-  :PROGRESS :: hang on, the milter is performing some lengthy computation
-  :TEMPORARY-FAILURE :: the message can't be processed by the milter because of a temporary problem
+  CONTINUE :: get on with the next event
+  ACCEPT :: accept the message
+  REJECT :: bounce the message
+  DISCARD :: silently ignore the message
+  PROGRESS :: hang on, the milter is performing some lengthy computation
+  TEMPORARY-FAILURE :: the message can't be processed by the milter because of a temporary problem
 
 This library is mostly stateless, so the program, if needs to, is
 responsible to save its state in the context object.  To do that you
@@ -70,23 +70,25 @@ Sendmail.
 To install a milter in Sendmail, in /etc/mail/sendmail.mc, you have to
 add a line like these:
 
-INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
-INPUT_MAIL_FILTER(`filter2', `S=inet:20025@localhost, F=T')
+#+BEGIN_EXAMPLE
+  INPUT_MAIL_FILTER(`filter1', `S=unix:/var/run/demyltify.socket, F=T')
+  INPUT_MAIL_FILTER(`filter2', `S=inet:20025@localhost, F=T')
+#+END_EXAMPLE
 
 and compile the .mc into a .cf file:
 
-#+BEGIN_SRC lisp -n
-cd /etc/mail
-make
-make install restart
+#+BEGIN_SRC sh -n
+  cd /etc/mail
+  make
+  make install restart
 #+END_SRC
 
 Then make sure you use the same address in the call of
 START-MILTER:
 
 #+BEGIN_SRC lisp -n
-(start-milter #P"/var/run/demyltify.socket" #'my-connect-callback)
-(start-milter 20025 #'my-connect-callback)
+  (start-milter #P"/var/run/demyltify.socket" #'my-connect-callback)
+  (start-milter 20025 #'my-connect-callback)
 #+END_SRC
 
 The F=T flag tells Sendmail to treat milter-related errors (ie
