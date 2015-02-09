@@ -16,9 +16,9 @@ The libmilter library implements the milter protocol, the
 (de)serialisation of the data and the multi-threading.  This is what
 demyltify does as well, in a more lispy style.
 
-Milters written with demyltify don't need to be multi-thread.  It's
-up to you whether, in the ON-CONNECTION callback, you want to spawn a
-new thread, fork a new process, or simply do nothing special to handle
+Milters written with demyltify don't need to be multi-thread.  It's up
+to you whether, in the =ON-CONNECTION= callback, to spawn a new
+thread, fork a new process, or simply do nothing special to handle
 Sendmail connections.
 
 
@@ -34,11 +34,9 @@ callback, in turn, must call =SERVER-LOOP= with the context object
 that usually will contain further state data and milter options such
 as the protocol options.
 
-Each event method accepts an event object and a context object, and
-returns an action object.
-
 On each event received from Sendmail, the library calls the relevant
-handler (method).
+handler (method).  Each event method accepts an event object and a
+context object, and returns an action object.
 
 
 ** To install and compile
@@ -53,9 +51,9 @@ handler (method).
 To use this library, all you have to do is:
 
   - write your own context class inheriting from =MILTER-CONTEXT=
-  - specialise the HANDLE-EVENT methods on your =MILTER-CONTEXT= class
-    for all the events you care about (the default definition will
-    simply let any mail through)
+  - specialise the =HANDLE-EVENT= methods on your =MILTER-CONTEXT=
+    class for all the events you care about (the default definition
+    will simply let any mail through)
   - call =START-MILTER=
 
 The default options negotiation method will signal an error condition
@@ -64,9 +62,9 @@ sensible behaviour considering that, if the MTA doesn't match the
 performed actions and required events of the milter, there is very
 little the milter can do about it; it will simply not work.
 
-HANDLE-EVENT methods must return an action symbol or object which will
-be sent to the MTA.  The action without arguments are specified as
-keywords.  Those are
+=HANDLE-EVENT= methods must return an action symbol or object which
+will be sent to the MTA.  The action without arguments are specified
+as keywords.  Those are
 
   + =:CONTINUE= get on with the next event
   + =:ACCEPT= accept the message
@@ -79,6 +77,12 @@ This library is mostly stateless, so the program, if needs to, is
 responsible to save its state in the context object.  To do that you
 are supposed to write your own context class which inherits from
 =MILTER-CONTEXT= and pass it to =START-MILTER=.
+
+The lifetime of a context object is the same as the Sendmail
+connection.  The user program has to make sure that it resets whatever
+state, in the context, that is message-specific, at every message
+boundary.  Usually good places are the =END-OF-MESSAGE= and the
+=ABORT= handlers.
 
 =START-MILTER= is a procedure that never exits under normal
 circumstances.  It enters a loop serving MTA connections on the
@@ -113,7 +117,7 @@ Then make sure you use the same address in the call of
   (start-milter 20025 #'my-connect-callback)
 #+END_SRC
 
-The F=T flag tells Sendmail to treat milter-related errors (ie milter
+The ~F=T~ flag tells Sendmail to treat milter-related errors (ie milter
 not listening or crashing) as temporary.  Read the Sendmail's
 cf/README file if you need further details.
 
