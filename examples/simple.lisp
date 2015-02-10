@@ -1,4 +1,4 @@
-;;;  mymilter.lisp --- sample milter with demyltify
+;;;  simple.lisp --- sample milter with demyltify
 
 ;;;  Copyright (C) 2004-2015 by Walter C. Pelissero
 
@@ -28,7 +28,6 @@
 (cl:in-package :cl-user)
 
 (defpackage :my-milter
-  (:nicknames :my-lousy-milter)
   (:use :common-lisp :milter)
   (:export #:start-my-milter))
 
@@ -70,7 +69,7 @@ for an average of ~A byte~:P per message~%"
   accept)
 
 (defun start-milter-loop (socket)
-  (be context (make-instance 'march-context
+  (be context (make-instance 'my-context
 			     :socket socket
 			     :events '(:mail :body)
 			     :actions '(:add-header))

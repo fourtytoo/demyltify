@@ -151,7 +151,7 @@ called with a socket as argument and, in turn, it should call
 
 #+BEGIN_SRC lisp -n
   (defun start-milter-loop (socket)
-    (be context (make-instance 'march-context
+    (be context (make-instance 'my-context
                                :socket socket
                                :events '(:mail :body)
                                :actions '(:add-header))
@@ -181,7 +181,7 @@ passing the current context and the macro name as a string.  Example:
 In an =EVENT-RECIPIENT= handler method it might be used like this:
 
 #+BEGIN_SRC lisp -n
-(defmethod handle-event ((event event-recipient) (ctx march-context))
+(defmethod handle-event ((event event-recipient) (ctx my-context))
   (push (make-recipient :address (extract-mail-address (event-recipient-address event))
 			:mailer (get-macro ctx "rcpt_mailer")
 			:host (get-macro ctx "rcpt_host"))
@@ -214,7 +214,7 @@ Then make sure you use the same address in the call of
 
 #+BEGIN_SRC lisp -n
   (start-milter #P"/var/run/demyltify.socket" #'my-connect-callback)
-  (start-milter 20025 #'my-connect-callback)
+  (start-milter 20025 #'my-start-milter-loop)
 #+END_SRC
 
 The ~F=T~ flag tells Sendmail to treat milter-related errors (ie milter
