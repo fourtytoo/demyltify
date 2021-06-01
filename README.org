@@ -266,7 +266,7 @@ implementation in Perl.
 
 ** License
 
-Copyright © 2004-2015 Walter C. Pelissero <walter@pelissero.de>
+Copyright © 2004-2015 Walter C. Pelissero
 
 Distributed under the GNU Lesser General Public License either version
 2 or (at your option) any later version.
